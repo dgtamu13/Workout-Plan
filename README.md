@@ -25,6 +25,20 @@ Source of the app is a single page: [`docs/index.html`](docs/index.html).
 
 Open the site on your phone, then **Share → Add to Home Screen** (iOS Safari) or **Install app** (Chrome/Android).
 
+## Program
+
+A 28-week plan that repeats a 7-day cycle counted from Day 1 (not tied to weekdays): PUSH A, PULL A, LEGS A (hypertrophy), PUSH B, PULL B, LEGS B (strength), then REST.
+Everything derives from the single `START` constant in `docs/index.html`.
+
+| Phase | Weeks | Deload week |
+| --- | --- | --- |
+| 1 Reclaim | 1–6 | 6 |
+| 2 Build | 7–14 | 13 |
+| 3 Lean | 15–22 | 20 |
+| 4 Peak | 23–28 | 27 |
+
+`scripts/verify-plan.js` (`npm test`) checks dates, phases, deloads, the plan tables and the progression rules.
+
 ## Data
 
 Everything is saved on the device first (browser `localStorage`), so the app works offline.
