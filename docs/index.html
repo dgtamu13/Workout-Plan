@@ -25,7 +25,7 @@
   --push:#E3262F; --pull:#3BB7C9; --legs:#E3A23B;
   --green:#39D98A; --yellow:#F2C14E; --red:#FF5A5A; --gold:#F2C14E;
   --input:#0B0D10; --glow:rgba(227,38,47,.35); --scan:rgba(255,255,255,.018);
-  --show-dark:inline; --show-light:none; --side:dark;
+  --show-dark:inline; --show-light:none; --vis-dark:visible; --vis-light:hidden; --side:dark;
   color-scheme: dark;
   --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
   --sans:'Inter', system-ui, -apple-system, sans-serif;
@@ -40,7 +40,7 @@
   --push:#1763D6; --pull:#7446C9; --legs:#CC5E0B;
   --green:#17855A; --yellow:#946A00; --red:#BE2F28; --gold:#A87A00;
   --input:#FFFFFF; --glow:rgba(23,99,214,.22); --scan:rgba(12,26,40,.028);
-  --show-dark:none; --show-light:inline; --side:light;
+  --show-dark:none; --show-light:inline; --vis-dark:hidden; --vis-light:visible; --side:light;
   color-scheme: light;
   }
 }
@@ -51,7 +51,7 @@
   --push:#1763D6; --pull:#7446C9; --legs:#CC5E0B;
   --green:#17855A; --yellow:#946A00; --red:#BE2F28; --gold:#A87A00;
   --input:#FFFFFF; --glow:rgba(23,99,214,.22); --scan:rgba(12,26,40,.028);
-  --show-dark:none; --show-light:inline; --side:light;
+  --show-dark:none; --show-light:inline; --vis-dark:hidden; --vis-light:visible; --side:light;
   color-scheme: light;
 }
 /* The in-app Dark/Light Side switch wins over system and viewer theme */
@@ -62,7 +62,7 @@ html:root[data-side="dark"] {
   --push:#E3262F; --pull:#3BB7C9; --legs:#E3A23B;
   --green:#39D98A; --yellow:#F2C14E; --red:#FF5A5A; --gold:#F2C14E;
   --input:#0B0D10; --glow:rgba(227,38,47,.35); --scan:rgba(255,255,255,.018);
-  --show-dark:inline; --show-light:none; --side:dark;
+  --show-dark:inline; --show-light:none; --vis-dark:visible; --vis-light:hidden; --side:dark;
   color-scheme: dark;
 }
 html:root[data-side="light"] {
@@ -72,7 +72,7 @@ html:root[data-side="light"] {
   --push:#1763D6; --pull:#7446C9; --legs:#CC5E0B;
   --green:#17855A; --yellow:#946A00; --red:#BE2F28; --gold:#A87A00;
   --input:#FFFFFF; --glow:rgba(23,99,214,.22); --scan:rgba(12,26,40,.028);
-  --show-dark:none; --show-light:inline; --side:light;
+  --show-dark:none; --show-light:inline; --vis-dark:hidden; --vis-light:visible; --side:light;
   color-scheme: light;
 }
 
@@ -330,7 +330,7 @@ body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:n
 .cal { border-top:3px solid var(--accent); background:linear-gradient(180deg, var(--surf), var(--bg)); }
 .brand { display:flex; align-items:center; gap:12px; }
 .emblem { width:36px; height:36px; color:var(--accent); filter:drop-shadow(0 0 6px var(--glow)); flex:none; }
-.cal-top h1 { font-family:var(--disp); font-size:.86rem; font-weight:800; letter-spacing:.22em; color:var(--fg); }
+.cal-top h1 { font-family:var(--disp); font-size:.86rem; font-weight:800; letter-spacing:.14em; color:var(--fg); }
 .brand-sub { font-family:var(--mono); font-size:.66rem; color:var(--fg3); letter-spacing:.08em; text-transform:uppercase; margin-top:3px; }
 .month-label { font-family:var(--disp); font-size:.86rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
 .dow { font-family:var(--disp); }
@@ -365,6 +365,12 @@ body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:n
 .kv .v, .mb .num { letter-spacing:.02em; }
 .htable .mini { white-space:nowrap; }
 @media (max-width:480px) { .cal-top h1 { font-size:.74rem; letter-spacing:.16em; } .emblem { width:30px; height:30px; } }
+
+/* Both theme titles share one grid cell, so the header is the same size on either side and the controls never move */
+.cal-top h1, .brand-sub { display:grid; }
+.cal-top h1 > span, .brand-sub > span { grid-area:1/1; white-space:nowrap; }
+.cal-top h1 > .t-dark, .brand-sub > .t-dark { display:block; visibility:var(--vis-dark); }
+.cal-top h1 > .t-light, .brand-sub > .t-light { display:block; visibility:var(--vis-light); }
 
 /* ═══ Dark Side / Light Side ═══ */
 .e-dark, .t-dark { display:var(--show-dark); }
