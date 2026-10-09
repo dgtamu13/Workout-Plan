@@ -895,11 +895,24 @@ function hasData(d) {
 function priorWorkouts(type, beforeKey) {
   return Object.values(workouts).filter(w => w.type === type && w.date < beforeKey).sort((a, b) => b.date.localeCompare(a.date));
 }
-// Prior sessions of a lift, newest first. Deload-week sessions are skipped so progression resumes from the last normal week.
+// ═══ Readiness (pre-session check-in) ═══
+// Sleep and energy: 5 is best. Soreness: 5 is very sore, so it counts inverted.
+const LOW_READY = 0.9;
+function readiness(k) {
+  const f = fatigueLog[k];
+  if (!f || !f.done) return null;
+  const score = (f.sleep + (6 - f.soreness) + f.energy) / 3;
+  return { score, low: score <= 2, high: score >= 4 };
+}
+// Weight multiplier for the day: 10% lighter on a low-readiness day, otherwise unchanged.
+function fatigueAdjust(k) { const r = readiness(k); return r && r.low ? LOW_READY : 1.0; }
+
+// Prior sessions of a lift, newest first. Deload-week and low-readiness sessions are skipped so progression
+// resumes from the last normal session.
 function liftHistory(name, k, count) {
   const out = [];
   for (const w of priorWorkouts('lift', k)) {
-    if (programInfo(w.date).deload) continue;
+    if (programInfo(w.date).deload || fatigueAdjust(w.date) < 1) continue;
     const e = w.exercises.find(x => x.name === name && !x.skipped && x.sets.some(s => num(s.r) > 0));
     if (e) { out.push({ date:w.date, sets:e.sets.filter(s => num(s.r) > 0) }); if (out.length >= count) break; }
   }
@@ -921,7 +934,22 @@ function firstSession(name, p, session, k, lo, hi, n) {
   return { targets:Array.from({length:n}, (_, i) => ({ w:null, r: wave ? WAVE_REPS[i % 6] : r0 })), last:null, wave,
     status:{ cls:'calib', text:'Calibrate' }, why };
 }
-function liftRec(name, p, session, k) {
+function liftRec(name, p, session, k) { return applyReadiness(planLiftRec(name, p, session, k), k); }
+function applyReadiness(rec, k) {
+  const r = readiness(k);
+  if (!r) return rec;
+  if (r.low && rec.targets.some(t => t.w > 0)) {
+    rec.targets = rec.targets.map(t => t.w > 0 ? { ...t, w: round25(t.w * LOW_READY) } : t);
+    if (rec.waveTo) rec.waveTo += ' · −10% today';
+    rec.fatigue = 'low';
+    rec.why = `Low readiness today (${r.score.toFixed(1)}/5), so targets are 10% lighter. Your next session's targets ignore today. ${rec.why}`;
+  } else if (r.high) {
+    rec.fatigue = 'high';
+    rec.why += ' Readiness is high today: push for the top of the rep range.';
+  }
+  return rec;
+}
+function planLiftRec(name, p, session, k) {
   const [lo, hi] = range(p[3]); const n = +p[2];
   const info = programInfo(k), S = isStrength(session), wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
   const hist = liftHistory(name, k, 2), last = hist[0] || null;
@@ -1129,6 +1157,7 @@ function overload(rec, p, k) {
   const head = `${whenAgo(rec.last.date, k)[0].toUpperCase()}${whenAgo(rec.last.date, k).slice(1)} you hit ${setsSummary(top)} at ${at}.`;
   const reps = [...new Set(rec.targets.map(t => t.r))];
   const to = `${tw} × ${reps.length === 1 ? reps[0] : rec.targets.map(t => t.r).join('/')}`;
+  if (rec.fatigue === 'low') return { cls:'down', act:'−10% today', text:`${head} Low readiness today, so targets are 10% lighter (${t0.w ? t0.w + ' lb' : 'bodyweight'}). Your next session's targets ignore today.`, to };
   if (rec.micro) return { cls:'up', act:'+0.5 lb', text:`${head} ${rec.why}`, to };
   if (st === 'up') return { cls:'up', act:W ? `+${t0.w - W} lb` : '+1 rep', text:`${head} ${W ? `Try adding ${t0.w - W} lb: ${t0.w} lb for ${lo}+ reps.` : `Go for ${t0.r} reps, or add weight.`}`, to };
   if (st === 'down') return { cls:'down', act:`−${W - t0.w} lb`, text:`${head} That's under ${lo} reps, so drop to ${t0.w} lb and own the range.`, to };
@@ -1180,14 +1209,6 @@ function isDeloadWeek(k) {
   return programInfo(k).deload;
 }
 
-function fatigueAdjust(k) {
-  const f = fatigueLog[k];
-  if (!f || !f.done) return 1.0;
-  const avg = (f.sleep + f.soreness + f.energy) / 3;
-  if (avg >= 4) return 1.1;
-  if (avg <= 2) return 0.9;
-  return 1.0;
-}
 
 function streakAndConsistency() {
   const today = todayKey();
@@ -1319,7 +1340,31 @@ restBar.addEventListener('click', e => {
   if (REST.done) { REST.done = false; clearTimeout(REST.to); restBar.classList.remove('done'); const l = document.getElementById('rbLbl'); if (l) l.textContent = 'Rest · extra time'; REST.iv = setInterval(tickRest, 250); }
   tickRest();
 });
+// Supersets share one rest: after a set of the first exercise, go straight to the partner; after the partner's set,
+// rest for the longer of the two rest times, then return to the first exercise.
+function supersetRest(i, j) {
+  const k = keyOf(selected), session = sessionFor(k), d = curDraft(); const ex = d?.exercises[i];
+  const p = ex?.superset, partner = p !== null && p !== undefined ? d.exercises[p] : null;
+  if (tab !== 'lift' || !partner || partner.skipped || ex.skipped) return false;
+  const restOf = x => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); return restSecs(row ? row[4] : '2 min'); };
+  const openSet = (x, after) => x.sets.findIndex((s, n) => n > after && !(num(s.r) > 0));
+  const target = (x, n) => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); const t = row && liftRec(x.name, row, session, k).targets[n]; return t ? (t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`) : ''; };
+  const [first, second] = i < p ? [ex, partner] : [partner, ex];
+  if (ex === first && j >= 0) {
+    const n = openSet(second, -1);
+    if (n < 0) return false; // partner already finished: rest as normal
+    startRest(0, ex.name, `Superset: go to ${second.name}, set ${n + 1}${target(second, n)}`);
+    const l = document.getElementById('rbLbl'); if (l) l.textContent = `Superset · no rest, go now`;
+    return true;
+  }
+  const n = openSet(first, -1);
+  const nx = d.exercises.slice(Math.max(i, p) + 1).find(x => !x.skipped);
+  const next = n >= 0 ? `Superset round ${n + 1}: ${first.name}, set ${n + 1}${target(first, n)}` : nx ? `Next exercise: ${nx.name}` : 'Last exercise done. Add notes and submit.';
+  startRest(Math.max(restOf(first), restOf(second)), `${first.name} + ${second.name}`, next);
+  return true;
+}
 function startRestFor(i, j) {
+  if (supersetRest(i, j)) return;
   const k = keyOf(selected), session = sessionFor(k), d = curDraft(); const ex = d?.exercises[i]; if (!ex) return;
   let secs = 45, label = ex.name;
   if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); secs = restSecs(p ? p[4] : '2 min'); }
@@ -1420,7 +1465,7 @@ function renderDay(type) {
     <b>Quick check-in before you start</b>
     <div class="checkin-row">
       <label>Sleep quality <select data-cq="sleep">${checkinOpts}</select></label>
-      <label>Soreness <select data-cq="soreness">${checkinOpts}</select></label>
+      <label>Soreness (5 = very sore) <select data-cq="soreness">${checkinOpts}</select></label>
       <label>Energy <select data-cq="energy">${checkinOpts}</select></label>
       <button data-act="checkin-save">Save &amp; start</button>
     </div>
