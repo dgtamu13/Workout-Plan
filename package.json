@@ -4,7 +4,7 @@
   "description": "",
   "main": "newfile.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/verify-plan.js"
   },
   "repository": {
     "type": "git",

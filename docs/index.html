@@ -536,31 +536,78 @@ const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
 
-// [name, method, sets, reps, rest]
+// [name, method, sets, reps, rest, cue, kind]  kind: C compound · P primary (strength day) · S secondary · I isolation
+// These are the Phase 1 (Reclaim) tables as written in the plan. liftRows() applies the phase and deload changes for a date.
+const H_REST = '60–90 sec', S_REST = '2–3 min';
 const LIFTING = {
-  'PUSH A': [['Barbell Bench Press','RIR 1','4','4–6','3 min'],['Incline DB Press','RIR 2','3','6–10','2 min'],['Seated DB Shoulder Press','RIR 2','3','6–10','2 min'],['Cable Lateral Raise','RIR 1','3','10–15','90 sec'],['Pec Deck / Cable Fly','RIR 1','3','10–15','90 sec'],['Overhead Cable Extension','RIR 1','3','10–15','90 sec'],['Tricep Pushdown','RIR 1','3','10–15','90 sec']],
-  'PUSH B': [['Standing OHP','RIR 1','4','4–6','3 min'],['Machine Shoulder Press','RIR 2','3','6–10','2 min'],['Incline DB Press (45°)','Tempo 2011','3','8–10','2 min'],['Cable Lateral Raise','RIR 1','3','10–15','90 sec'],['Weighted Dips','RIR 2','3','6–10','2 min'],['Skull Crushers','Pause','3','8–12','90 sec'],['Cable Pushdown','Drop Set','3','10–15','90 sec']],
-  'PULL A': [['Weighted Pull-Ups','RIR 2','4','4–8','3 min'],['Barbell Bent-Over Row','RIR 1','3','6–8','2 min'],['Seated Cable Row','Tempo 2011','3','8–12','2 min'],['Face Pulls','RIR 1','3','15–20','90 sec'],['Single-Arm Cable Row','RIR 1','3','10–12','90 sec'],['Barbell Curl','RIR 1','3','6–10','90 sec'],['Incline DB Curl','RIR 1','3','10–15','90 sec']],
-  'PULL B': [['Conventional Deadlift','RIR 1','4','3–5','3 min'],['Lat Pulldown','RIR 2','3','8–12','2 min'],['ISO Row','Pause','3','8–10','2 min'],['Straight-Arm Pulldown','RIR 1','3','12–15','90 sec'],['Face Pulls','RIR 1','3','15–20','90 sec'],['Cable Curl','Drop Set','3','10–15','90 sec'],['Alternating Hammer Curl','RIR 1','3','10–12','90 sec']],
-  'LEGS A': [['Back Squat','RIR 1','4','4–6','3 min'],['Romanian Deadlift','Tempo 3010','3','8–10','2 min'],['Leg Press','RIR 2','3','10–15','2 min'],['Walking Lunges','RIR 2','3','12/leg','90 sec'],['Leg Curl','RIR 1','3','10–15','90 sec'],['Standing Calf Raise','Pause','4','10–15','60 sec']],
-  'LEGS B': [['Bulgarian Split Squat','RIR 2','3','8–10/leg','2 min'],['Front Squat','RIR 1','3','5–8','3 min'],['Hip Thrust','Pause','3','8–12','2 min'],['Lying Leg Curl','Tempo 3010','3','10–12','90 sec'],['Hack Squat','RIR 2','3','10–15','2 min'],['Seated Calf Raise','RIR 1','4','15–20','60 sec']],
+  'PUSH A': [
+    ['Incline DB Press','RIR 1–2','4','10–15',H_REST,'30–45° bench, 3 sec eccentric, 1 sec squeeze','C'],
+    ['Cable Lateral Raise','Drop Set','4','12–15',H_REST,'Lead with the elbow; drop set (−30%) on the last set','I'],
+    ['Pec Deck / Cable Fly','RIR 0–1','3','12–15',H_REST,'Full stretch, 1 sec peak squeeze','I'],
+    ['Machine Shoulder Press','RIR 1–2','3','12–15',H_REST,'3 sec eccentric, no shrug','C'],
+    ['Overhead Cable Extension','RIR 0–1','3','12–15',H_REST,'Cable overhead extension: full stretch, elbows in','I'],
+    ['Tricep Pushdown','RIR 0–1','3','15–20',H_REST,'Rope; flare the handles at the bottom','I'],
+    ['Face Pulls','RIR 0–1','2','15–20',H_REST,'Rope to forehead, external rotation','I'],
+  ],
+  'PULL A': [
+    ['Lat Pulldown','RIR 1–2','4','10–15',H_REST,'Wide overhand grip; full stretch at the top, pull to upper chest','C'],
+    ['Seated Cable Row','RIR 1–2','4','12–15',H_REST,'Wide grip, elbows flared, squeeze the scapulae','C'],
+    ['Single-Arm DB Row','RIR 1–2','3','12–15/arm',H_REST,'Full reach at the bottom, row to the hip','C'],
+    ['Cable Rear Delt Fly','RIR 0–1','3','15–20',H_REST,'Single arm at head height, wide arc','I'],
+    ['Face Pulls','RIR 0–1','3','15–20',H_REST,'Two days a week minimum','I'],
+    ['Incline DB Curl','RIR 0–1','3','12–15',H_REST,'Full stretch, supinate at the top','I'],
+    ['Cable Curl','RIR 0–1','3','12–15',H_REST,'Supinated grip, full ROM, 3 sec eccentric','I'],
+  ],
+  'LEGS A': [
+    ['Leg Press','RIR 1–2','4','12–15',H_REST,'Mid-platform, full ROM, controlled descent','C'],
+    ['Romanian Deadlift','RIR 1–2','3','10–12',H_REST,'Hips back, 3 sec eccentric','C'],
+    ['Walking Lunges','RIR 1–2','3','15/leg',H_REST,'Hold dumbbells; long stride, stay upright','C'],
+    ['Leg Curl','RIR 0–1','4','12–15',H_REST,'Seated; 1 sec peak, 3 sec eccentric','I'],
+    ['Bulgarian Split Squat','RIR 1–2','3','10–12/leg',H_REST,'Hold dumbbells; shin vertical, full depth','C'],
+    ['Standing Calf Raise','RIR 0–1','4','15–20',H_REST,'Pause 1 sec at the top and bottom','I'],
+    ['Seated Calf Raise','RIR 0–1','3','15–20',H_REST,'Full stretch, soleus emphasis','I'],
+  ],
+  'PUSH B': [
+    ['Barbell Bench Press','RIR 1','5','3–5',S_REST,'Full ROM, bar to chest','P'],
+    ['Standing OHP','RIR 1','4','4–6',S_REST,'Strict, no leg drive','P'],
+    ['Weighted Dips','RIR 2','3','5–6',S_REST,'Forward lean','S'],
+    ['Skull Crushers','RIR 2','3','6–8',S_REST,'EZ bar to the forehead, elbows in','S'],
+    ['DB Shoulder Press','RIR 2','3','6–8',S_REST,'Neutral grip is fine','S'],
+  ],
+  'PULL B': [
+    ['Conventional Deadlift','RIR 1','4','3–5',S_REST,'Brace hard, bar stays on the legs','P'],
+    ['Barbell Bent-Over Row','RIR 1','4','4–6',S_REST,'Overhand grip, 45° torso, 2 sec eccentric','P'],
+    ['Weighted Pull-Ups','RIR 1','4','4–6',S_REST,'Dead hang, full extension','P'],
+    ['Barbell Curl','RIR 2','3','6–8',S_REST,'Strict, 2 sec eccentric','S'],
+    ['Alternating Hammer Curl','RIR 2','3','8–10',S_REST,'Neutral grip, full ROM','S'],
+  ],
+  'LEGS B': [
+    ['Back Squat','RIR 1','5','3–5',S_REST,'High bar, break parallel','P'],
+    ['Front Squat','RIR 1','3','4–5',S_REST,'Elbows high, stay upright (goblet squat if needed)','P'],
+    ['Hip Thrust','RIR 2','4','6–8',S_REST,'Barbell; 1 sec squeeze at the top','S'],
+    ['Lying Leg Curl','RIR 2','3','6–8',S_REST,'3–4 sec eccentric','S'],
+    ['Deficit RDL','RIR 2','3','5–6',S_REST,'2 in. deficit, deep hinge','S'],
+  ],
 };
 // [name, sets, target]
 const CORE = {
-  'PUSH A': [['Dead Bug','3','10/side'],['Ab Wheel','3','8–10 reps'],['Plank','3','45 sec hold']],
-  'PUSH B': [['Hanging Leg Raise','3','10–15 reps'],['Cable Crunch','3','15 reps'],['Side Plank','3','30 sec/side']],
-  'PULL A': [['Bird Dog','3','10/side'],['Ab Wheel','3','8–10 reps'],['McGill Curl-Up','3','10/side']],
-  'PULL B': [['Hollow Body Hold','3','30 sec'],['Pallof Press','3','12/side'],['Reverse Crunch','3','15 reps']],
-  'LEGS A': [['Plank','3','45 sec hold'],['Dead Bug','3','10/side'],['Suitcase Carry','3','30 yd/side']],
-  'LEGS B': [['Ab Wheel','3','8–10 reps'],['Hanging Knee Raise','3','12–15 reps'],['Copenhagen Plank','3','20 sec/side']],
+  'PUSH A': [['Cable Crunch','3','15 reps'],['Hanging Leg Raise','3','15 reps'],['Serratus Punch (cable)','3','15/side'],['Plank w/ Shoulder Tap','3','12/side']],
+  'PUSH B': [['Cable Crunch','3','15 reps'],['Hanging Leg Raise','3','15 reps'],['Serratus Punch (cable)','3','15/side'],['Plank w/ Shoulder Tap','3','12/side']],
+  'PULL A': [['Landmine Rotation','3','12/side'],['Cable Woodchop','3','12/side'],['Side Plank w/ Hip Dip','3','10/side'],['Pallof Press','3','12 reps']],
+  'PULL B': [['Landmine Rotation','3','12/side'],['Cable Woodchop','3','12/side'],['Side Plank w/ Hip Dip','3','10/side'],['Pallof Press','3','12 reps']],
+  'LEGS A': [['Hanging Tuck-to-Straight Leg Raise','3','12 reps'],['Ab Wheel','3','12 reps'],['Dead Bug','3','10/side'],['Dragon Flag Negative','3','5 reps']],
+  'LEGS B': [['Hanging Tuck-to-Straight Leg Raise','3','12 reps'],['Ab Wheel','3','12 reps'],['Dead Bug','3','10/side'],['Dragon Flag Negative','3','5 reps']],
 };
+// Phase 1 cardio. `rounds` is the starting round count, `maxRounds` the cap (cardioPlan() adjusts both per phase).
+const HIIT_NOTE = 'Work intervals in Zone 4–5 (160–185 bpm); rest intervals back to Zone 2–3 (136–155 bpm).';
+const Z2_NOTE = 'Full-sentence pace: incline treadmill 3.5–4 mph at 8–10%, or bike. Hold 136–148 bpm.';
 const CARDIO = {
-  'PUSH A': { type:'Zone 2', duration:35, recommended:'Rower',          alts:['Stationary Bike','Stair Master','Treadmill'],             note:'Fresh legs — rower gives full-body aerobic base. Conversational pace, HR in band.' },
-  'PULL A': { type:'HIIT',   duration:25, recommended:'Treadmill',      alts:['Rower','Stationary Bike','Stair Master'],                protocol:'30 sec max effort / 90 sec easy', note:'Add 1 round per session while form holds. Cap at 16.' },
-  'LEGS A': { type:'Zone 2', duration:35, recommended:'Stationary Bike',alts:['Rower','Treadmill','Stair Master'],                      note:'Post-legs: no impact. Bike protects knees; stay seated.' },
-  'PUSH B': { type:'Zone 2', duration:35, recommended:'Stair Master',   alts:['Rower','Stationary Bike','Treadmill'],                   note:'Legs recovered — Stair Master adds glute/posterior work at aerobic pace.' },
-  'PULL B': { type:'HIIT',   duration:25, recommended:'Rower',          alts:['Treadmill','Stationary Bike','Stair Master'],            protocol:'30 sec max effort / 90 sec easy', note:'Add 1 round per session while form holds. Cap at 16.' },
-  'LEGS B': { type:'Zone 2', duration:35, recommended:'Stationary Bike',alts:['Rower','Treadmill','Stair Master'],                      note:'Post-legs: bike only. Protect the joints — no impact.' },
+  'PUSH A': { type:'HIIT',   duration:15, rounds:10, maxRounds:10, recommended:'Rower',          alts:['Treadmill','Stationary Bike','Stair Master'], protocol:'30 sec on / 30 sec off', note:HIIT_NOTE },
+  'PULL A': { type:'HIIT',   duration:15, rounds:10, maxRounds:10, recommended:'Treadmill',      alts:['Rower','Stationary Bike','Stair Master'],     protocol:'40 sec on / 20 sec off', note:HIIT_NOTE },
+  'LEGS A': { type:'Zone 2', duration:30, recommended:'Stationary Bike', alts:['Treadmill','Rower','Stair Master'], note:Z2_NOTE },
+  'PUSH B': { type:'Zone 2', duration:25, recommended:'Treadmill',       alts:['Stationary Bike','Rower','Stair Master'], note:Z2_NOTE },
+  'PULL B': { type:'Zone 2', duration:25, recommended:'Treadmill',       alts:['Stationary Bike','Rower','Stair Master'], note:Z2_NOTE },
+  'LEGS B': { type:'Zone 2', duration:25, recommended:'Stationary Bike', alts:['Treadmill','Rower','Stair Master'], note:Z2_NOTE },
 };
 const MACHINES = ['Treadmill','Rower','Stair Master','Stationary Bike'];
 const Z2 = [136, 148];
@@ -604,6 +651,10 @@ const LIFT_ALTS = {
   'Lying Leg Curl':['Hamstrings',['Seated Leg Curl','Nordic Curl','Stability Ball Curl']],
   'Hack Squat':['Quads',['Leg Press','Pendulum Squat','Smith Machine Squat']],
   'Seated Calf Raise':['Calves (soleus)',['Standing Calf Raise','Leg Press Calf Raise','Smith Calf Raise']],
+  'DB Shoulder Press':['Front delts',['Seated DB Shoulder Press','Machine Shoulder Press','Arnold Press','Landmine Press']],
+  'Single-Arm DB Row':['Lats (unilateral)',['One-Arm DB Row','Single-Arm Cable Row','Meadows Row','Single-Arm Machine Row']],
+  'Cable Rear Delt Fly':['Rear delts',['Reverse Pec Deck','Rear Delt DB Fly','Face Pulls']],
+  'Deficit RDL':['Hamstrings · glutes',['Romanian Deadlift','DB Romanian Deadlift','Good Morning','45° Back Extension']],
 };
 const CORE_ALTS = {
   'Dead Bug':['Anti-extension',['Bird Dog','Hollow Body Hold','Stability Ball Dead Bug']],
@@ -620,6 +671,13 @@ const CORE_ALTS = {
   'Suitcase Carry':['Obliques · grip',['Farmer Carry','Single-Arm Overhead Carry','Side Plank']],
   'Hanging Knee Raise':['Lower abs',["Captain's Chair Knee Raise",'Reverse Crunch','Lying Leg Raise']],
   'Copenhagen Plank':['Adductors · obliques',['Side Plank','Adductor Machine','Side-Lying Adduction']],
+  'Serratus Punch (cable)':['Serratus · anti-extension',['Plank w/ Shoulder Tap','Dead Bug','Plank']],
+  'Plank w/ Shoulder Tap':['Anti-rotation',['Plank','Dead Bug','Bird Dog']],
+  'Landmine Rotation':['Obliques · rotation',['Cable Woodchop','Pallof Press','Russian Twist']],
+  'Cable Woodchop':['Obliques · rotation',['Landmine Rotation','Pallof Press','Russian Twist']],
+  'Side Plank w/ Hip Dip':['Obliques · anti-lateral flexion',['Side Plank','Copenhagen Plank','Suitcase Carry']],
+  'Hanging Tuck-to-Straight Leg Raise':['Lower abs · hip flexion',['Hanging Leg Raise','Hanging Knee Raise',"Captain's Chair Leg Raise"]],
+  'Dragon Flag Negative':['Anti-extension',['Hollow Body Hold','Ab Wheel','Lying Leg Raise']],
 };
 function buildLib(map) {
   const lib = new Map();
@@ -629,7 +687,7 @@ function buildLib(map) {
 const LIFT_LIB = buildLib(LIFT_ALTS), CORE_LIB = buildLib(CORE_ALTS);
 
 const COLOR = { 'PUSH A':'var(--push)','PUSH B':'var(--push)','PULL A':'var(--pull)','PULL B':'var(--pull)','LEGS A':'var(--legs)','LEGS B':'var(--legs)','REST':'var(--fg3)' };
-const TAGCLS = { 'Tempo 2011':'tempo','Tempo 3010':'tempo','Drop Set':'drop','Pause':'pause' };
+const TAGCLS = { 'Tempo 2011':'tempo','Tempo 3010':'tempo','Drop Set':'drop','Pause':'pause','Rest-Pause':'drop','Superset':'tempo','Wave 5/4/3':'pause','Deload':'pause' };
 
 // ═══ Helpers ════════════════════════════════════════════════════════
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -639,9 +697,37 @@ const shortDate = k => fromKey(k).toLocaleDateString('en-US', { month:'short', d
 const longDate = k => fromKey(k).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
 const num = v => (v === null || v === undefined || v === '' || isNaN(+v)) ? null : +v;
 const clone = o => JSON.parse(JSON.stringify(o));
+// ═══ 28-week program: phases, deloads, week math (everything derives from START) ═══
+const PROGRAM_WEEKS = 28;
+const PHASES = [
+  { n:1, name:'Reclaim', from:1,  to:6,  deload:6,  hyp:'65–70% 1RM', str:'75–80% 1RM' },
+  { n:2, name:'Build',   from:7,  to:14, deload:13, hyp:'70–75% 1RM', str:'80–87% 1RM' },
+  { n:3, name:'Lean',    from:15, to:22, deload:20, hyp:'72–78% 1RM', str:'85–90% 1RM' },
+  { n:4, name:'Peak',    from:23, to:28, deload:27, hyp:'70–75% 1RM', str:'85–90% 1RM' },
+];
+const DELOAD_KEEP = 0.6; // deload weeks keep ~60% of sets, rounds and minutes
+const OLD_BESTS = { 'Barbell Bench Press':200, 'Back Squat':250, 'Conventional Deadlift':365, 'Standing OHP':110 };
+// Strength-day milestones by end of phase (lb)
+const MILESTONES = [
+  { 'Barbell Bench Press':155, 'Back Squat':200, 'Conventional Deadlift':290, 'Standing OHP':85 },
+  { 'Barbell Bench Press':200, 'Back Squat':250, 'Conventional Deadlift':365, 'Standing OHP':110 },
+  { 'Barbell Bench Press':215, 'Back Squat':275, 'Conventional Deadlift':390, 'Standing OHP':120 },
+  { 'Barbell Bench Press':220, 'Back Squat':285, 'Conventional Deadlift':405, 'Standing OHP':125 },
+];
+const isStrength = session => /\bB$/.test(session || '');
+const dayIndex = k => Math.round((fromKey(k) - START) / 86400000);
+// status: 'not-started' | 'active' | 'complete'. Outside the program, session is null and phase falls back to the nearest one.
+function programInfo(k) {
+  const d = dayIndex(k);
+  if (d < 0) return { status:'not-started', week:0, day:0, session:null, phase:PHASES[0], deload:false };
+  const week = Math.floor(d / 7) + 1;
+  if (week > PROGRAM_WEEKS) return { status:'complete', week, day:(d % 7) + 1, session:null, phase:PHASES[PHASES.length - 1], deload:false };
+  const phase = PHASES.find(ph => week >= ph.from && week <= ph.to);
+  return { status:'active', week, day:(d % 7) + 1, session:CYCLE[d % 7], phase, deload:week === phase.deload };
+}
+const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
 function plannedSession(date) {
-  const d = Math.round((new Date(date.getFullYear(), date.getMonth(), date.getDate()) - START) / 86400000);
-  return d < 0 ? null : CYCLE[d % 7];
+  return programInfo(keyOf(new Date(date.getFullYear(), date.getMonth(), date.getDate()))).session;
 }
 const tag = m => `<span class="tag ${TAGCLS[m] || ''}">${esc(m)}</span>`;
 const e1rm = (w, r) => (w > 0 && r > 0) ? Math.round(w * (1 + r / 30)) : null;
@@ -652,10 +738,7 @@ function coreSpec(target) {
   return { lo, hi, unit, side: /side|leg/.test(target) };
 }
 function liftInc(session, name) {
-  if (/^LEGS/.test(session) || /deadlift|squat|leg press|hip thrust|lunge/i.test(name)) return 10;
-  if (/\bDB\b|dumbbell/i.test(name)) return 5;
-  if (/lateral|fly|curl|extension|pushdown|kickback|face pull|pec deck|calf/i.test(name)) return 2.5;
-  return 5;
+  return (/^LEGS/.test(session) || /deadlift|squat|leg press|hip thrust|lunge|rdl/i.test(name)) ? 10 : 5;
 }
 const fmtW = w => (w === null || w === undefined) ? '—' : (w === 0 ? 'BW' : String(w));
 
@@ -684,7 +767,59 @@ if (['#lift','#core','#cardio','#body','#meals','#progress','#history'].includes
 let draftTimer = null;
 function saveDraftsSoon() { clearTimeout(draftTimer); draftTimer = setTimeout(() => lsSet(LS.d, drafts), 400); }
 
+// ═══ Phase and deload aware plan rows ═══════════════════════════════
+const deloadSets = n => Math.max(1, Math.round(n * DELOAD_KEEP));
+const SUPERSETS = { 'PULL A': [['Single-Arm DB Row', 'Cable Rear Delt Fly']] };
+const WAVE_REPS = [5, 4, 3, 5, 4, 3];
+const isWave = p => /^Wave/.test(p[1]);
+function liftRows(session, k) {
+  const base = LIFTING[session]; if (!base) return undefined;
+  const { phase, deload } = programInfo(k), ph = phase.n, strength = isStrength(session);
+  const pairs = (ph === 2 || ph === 3) && !deload && !strength ? (SUPERSETS[session] || []) : [];
+  let compounds = 0;
+  return base.map(([name, method, sets, reps, rest, cue, kind]) => {
+    let n = +sets, m = method, c = cue;
+    if (!strength) {
+      if ((ph === 2 || ph === 3) && kind === 'C' && compounds++ < 2) n += 1; // +1 set on the first two compounds
+      if (ph === 4) n = Math.min(n, 3);
+    }
+    if (deload) return [name, 'Deload', String(deloadSets(n)), reps, rest, `Deload: same weights as last week, fewer sets, stay well short of failure. ${cue}`, kind];
+    if (!strength) {
+      if (ph === 3 && kind === 'I') { m = 'Rest-Pause'; c += '. Final set: go to failure, rack 15 sec, then 2–3 more reps'; }
+    } else {
+      if (ph === 1 && kind === 'P') { m = 'RIR 2'; c += '. Work up to a clean 5 reps, no grinding'; }
+      if (ph === 3 && kind === 'P') { n = WAVE_REPS.length; m = 'Wave 5/4/3'; c += '. Two ascending waves of 5/4/3 reps'; }
+    }
+    const pair = pairs.find(x => x.includes(name));
+    if (pair) { m = 'Superset'; c += `. Superset with ${pair.find(x => x !== name)}, rest after the pair`; }
+    return [name, m, String(n), reps, rest, c, kind];
+  });
+}
+function coreRows(session, k) {
+  const base = CORE[session]; if (!base) return undefined;
+  return programInfo(k).deload ? base.map(([n, s, t]) => [n, String(deloadSets(+s)), t]) : base;
+}
+function cardioPlan(session, k) {
+  const b = CARDIO[session]; if (!b) return undefined;
+  const { phase, deload } = programInfo(k), ph = phase.n, c = { ...b };
+  if (c.type === 'HIIT') {
+    c.maxRounds = (ph === 2 || ph === 3) && session === 'PUSH A' ? 12 : 10;
+    c.baseRounds = 10;
+    c.rounds = deload ? deloadSets(c.baseRounds) : c.baseRounds;
+    if (deload) c.maxRounds = c.rounds;
+    c.duration = c.rounds + 5;
+    if (ph === 1) c.note = `About 80% effort. ${b.note}`;
+  } else {
+    if (ph === 3 && session === 'LEGS A') c.duration = 35;
+    if (ph === 4) c.duration = 30;
+    if (deload) c.duration = Math.round(c.duration * DELOAD_KEEP);
+  }
+  if (deload) c.note = `Deload: shorter than usual. ${c.note}`;
+  return c;
+}
+
 // ═══ Session + drafts ═══════════════════════════════════════════════
+const PLAN_VER = 3; // bump when the plan tables change so untouched drafts rebuild
 function sessionFor(k) {
   if (sessOverride[k]) return sessOverride[k];
   for (const t of ['lift','core','cardio']) if (workouts[`${k}_${t}`]?.session) return workouts[`${k}_${t}`].session;
@@ -692,18 +827,18 @@ function sessionFor(k) {
 }
 
 function buildDraft(type, k, session) {
-  const base = { date:k, type, session, notes:'', exercises:[] };
+  const base = { date:k, type, session, notes:'', exercises:[], ver:PLAN_VER };
   if (!session || session === 'REST') return base;
-  if (type === 'lift') base.exercises = LIFTING[session].map(([n,,s]) => ({ planned:n, name:n, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }));
-  if (type === 'core') base.exercises = CORE[session].map(([n,s,t]) => ({ planned:n, name:n, skipped:false, unit:coreSpec(t).unit, sets:Array.from({length:+s}, () => ({ v:null, w:null })) }));
-  if (type === 'cardio') { const c = CARDIO[session]; base.exercises = [{ planned:c.type, name:c.type, machine:c.recommended, skipped:false, duration:null, hr:null, maxhr:null, distance:null, rounds:null, level:'' }]; }
+  if (type === 'lift') base.exercises = liftRows(session, k).map(([n,,s]) => ({ planned:n, name:n, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }));
+  if (type === 'core') base.exercises = coreRows(session, k).map(([n,s,t]) => ({ planned:n, name:n, skipped:false, unit:coreSpec(t).unit, sets:Array.from({length:+s}, () => ({ v:null, w:null })) }));
+  if (type === 'cardio') { const c = cardioPlan(session, k); base.exercises = [{ planned:c.type, name:c.type, machine:c.recommended, skipped:false, duration:null, hr:null, maxhr:null, distance:null, rounds:null, level:'' }]; }
   return base;
 }
 
 function getDraft(type) {
   const k = keyOf(selected), id = `${k}_${type}`, session = sessionFor(k);
   const d = drafts[id];
-  if (d && d.session === session) return d;
+  if (d && d.session === session && (d.ver === PLAN_VER || hasData(d) || workouts[id])) return d;
   const w = workouts[id];
   drafts[id] = (w && w.session === session) ? stripMeta(clone(w)) : buildDraft(type, k, session);
   return drafts[id];
@@ -723,53 +858,86 @@ function hasData(d) {
 function priorWorkouts(type, beforeKey) {
   return Object.values(workouts).filter(w => w.type === type && w.date < beforeKey).sort((a, b) => b.date.localeCompare(a.date));
 }
-function lastLift(name, k) {
+// Prior sessions of a lift, newest first. Deload-week sessions are skipped so progression resumes from the last normal week.
+function liftHistory(name, k, count) {
+  const out = [];
   for (const w of priorWorkouts('lift', k)) {
+    if (programInfo(w.date).deload) continue;
     const e = w.exercises.find(x => x.name === name && !x.skipped && x.sets.some(s => num(s.r) > 0));
-    if (e) return { date:w.date, sets:e.sets.filter(s => num(s.r) > 0) };
+    if (e) { out.push({ date:w.date, sets:e.sets.filter(s => num(s.r) > 0) }); if (out.length >= count) break; }
   }
-  return null;
+  return out;
 }
-// Double progression. Weeks 1–2 = calibration (find a weight that lands in the bracket, no rep-chasing).
-// Week 3+: same weight until every working set hits the top of the bracket, then add the smallest increment and reset to the bottom.
-const CAL_WEEKS = 2;
+const lastLift = (name, k) => liftHistory(name, k, 1)[0] || null;
+// Double progression from Day 1. Same weight until every working set hits the top of the bracket, then add the increment
+// (+5 lb upper, +10 lb lower). A lift that stalls for two sessions gets a +0.5 lb micro-load.
+const CAL_WEEKS = 0;
 function programWeek(k) { const d = Math.round((fromKey(k) - START) / 86400000); return d < 0 ? 0 : Math.floor(d / 7) + 1; }
+const round25 = w => Math.round(w / 2.5) * 2.5;
+const stepDown = (n, lo, hi) => i => hi - Math.min(hi - lo, Math.max(0, i - 1)); // 8,8,7,6 for four sets in 6–8
+function firstSession(name, p, session, k, lo, hi, n) {
+  const S = isStrength(session), ph = programInfo(k).phase.n, old = OLD_BESTS[name];
+  const wave = isWave(p), r0 = S ? Math.min(hi, Math.max(5, lo)) : lo;
+  let why = S ? `No history yet. Pick a weight you can move for a clean 5 reps with about 2 reps in the tank (RIR). Don't grind.`
+              : `No history yet. Pick a weight that leaves about 3–4 reps in the tank (RIR) for ${lo}–${hi} reps. Log every set.`;
+  if (old) why += ` Your old best (${old} lb) is a rebuild target, not a starting point; expect to start well below it. End of Phase ${ph} goal: about ${MILESTONES[ph - 1][name]} lb.`;
+  return { targets:Array.from({length:n}, (_, i) => ({ w:null, r: wave ? WAVE_REPS[i % 6] : r0 })), last:null, wave,
+    status:{ cls:'calib', text:'Calibrate' }, why };
+}
 function liftRec(name, p, session, k) {
   const [lo, hi] = range(p[3]); const n = +p[2];
-  const wk = programWeek(k), cal = wk <= CAL_WEEKS;
-  const last = lastLift(name, k);
+  const info = programInfo(k), S = isStrength(session), wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
+  const hist = liftHistory(name, k, 2), last = hist[0] || null;
   const inc = liftInc(session, name);
-  if (!last) {
-    return { targets:Array.from({length:n}, () => ({ w:null, r:lo })), last:null,
-      status:{ cls:'calib', text:'Calibrate' },
-      why:`No history yet. Pick a weight you can move for ${lo}–${hi} clean reps with about 2 left in the tank. Don't grind. This sets your baseline.` };
-  }
+  if (!last) return firstSession(name, p, session, k, lo, hi, n);
   const W = Math.max(...last.sets.map(s => num(s.w) || 0));
   const top = last.sets.filter(s => (num(s.w) || 0) === W);
+  const ref = i => top[i] || top[top.length - 1];
+  const needed = Math.min(n, Math.max(last.sets.length, n - 1)); // tolerates the +1 set a new phase adds
   const atTop = top.slice(0, n).filter(s => s.r >= hi).length;
-  const allTop = top.length >= n && atTop >= n;
+  const allTop = top.length >= needed && top.slice(0, needed).every(s => s.r >= hi);
   const allLow = W > 0 && top.every(s => s.r < lo);
-  let targets, why, status;
-  if (allTop) {
-    targets = Array.from({length:n}, () => ({ w: W ? W + inc : 0, r: W ? lo : hi + 1 }));
-    why = cal
-      ? `${W} lb was too light: all ${n} sets reached ${hi}. Go to ${W + inc} lb and aim for ${lo}+ reps.`
-      : `All ${n} sets hit ${hi} reps at ${W} lb. Add ${inc} lb and restart at ${lo} reps.`;
+  const noDrop = S && info.phase.n >= 3; // strength-day weights are not cut in the Lean and Peak phases
+  let targets, why, status, micro = false, waveTo = null;
+  if (info.deload) {
+    targets = Array.from({length:n}, (_, i) => ({ w:W, r:Math.min(hi, Math.max(lo, ref(i).r)) }));
+    why = `Deload week: keep ${fmtW(W)}${W ? ' lb' : ''}, ${n} sets instead of your usual number. Stop well short of failure.`;
+    status = { cls:'calib', text:'Deload · same weight' };
+  } else if (isWave(p)) {
+    const lastWasWave = last.sets.length >= 6 && last.sets.some(s => (num(s.w) || 0) < W);
+    const earned = lastWasWave ? (top.length >= 2 && top.every(s => s.r >= 3)) : allTop;
+    const Wn = W && earned ? W + inc : W;
+    const a = round25(Wn * 0.9), b = round25(Wn * 0.95), ws = [a, b, Wn, a, b, Wn];
+    targets = Array.from({length:n}, (_, i) => ({ w:ws[i % 6], r:WAVE_REPS[i % 6] }));
+    waveTo = `${Wn} lb peak · 5/4/3 ×2`;
+    why = earned && W ? `Peak sets at ${W} lb were clean. Peak at ${Wn} lb today: waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn}, twice.`
+                      : `Waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn} lb, twice. Add ${inc} lb to the peak once every peak set is clean.`;
+    status = earned && W ? { cls:'up', text:`Add ${inc} lb` } : { cls:'build', text:'Waves 5/4/3' };
+  } else if (allTop) {
+    const rr = stepDown(n, lo, hi);
+    targets = Array.from({length:n}, (_, i) => ({ w: W ? W + inc : 0, r: W ? rr(i) : hi + 1 }));
+    why = `All ${n} sets hit ${hi} reps at ${W} lb. Add ${inc} lb and restart at ${targets.map(t => t.r).join('/')}.`;
     status = { cls:'up', text:`Add ${inc} lb` };
-  } else if (allLow) {
+  } else if (allLow && !noDrop) {
     targets = Array.from({length:n}, () => ({ w: Math.max(0, W - inc), r: lo }));
     why = `Every set at ${W} lb fell below ${lo} reps. Drop to ${W - inc} lb and own the range.`;
     status = { cls:'down', text:`Drop ${inc} lb` };
-  } else if (cal) {
-    targets = Array.from({length:n}, (_, i) => ({ w: W, r: top[i] ? Math.min(hi, Math.max(lo, top[i].r)) : lo }));
-    why = `${fmtW(W)} lb lands in the ${lo}–${hi} range. Lock it in and match last time's reps. Progression starts Week ${CAL_WEEKS + 1}.`;
-    status = { cls:'calib', text:`Calibration · Wk ${wk}/${CAL_WEEKS}` };
+  } else if (allLow) {
+    targets = Array.from({length:n}, () => ({ w:W, r:lo }));
+    why = `Every set at ${W} lb fell below ${lo} reps. Strength-day weights are held in this phase: stay at ${W} lb and build reps.`;
+    status = { cls:'build', text:'Hold weight' };
+  } else if (W && hist.length >= 2 && Math.max(...hist[1].sets.map(s => num(s.w) || 0)) === W
+             && last.sets.filter(s => (num(s.w) || 0) === W).reduce((t, s) => t + s.r, 0) <= hist[1].sets.filter(s => (num(s.w) || 0) === W).reduce((t, s) => t + s.r, 0)) {
+    micro = true;
+    targets = Array.from({length:n}, (_, i) => ({ w:W + 0.5, r:Math.min(hi, Math.max(lo, ref(i).r)) }));
+    why = `Stalled at ${W} lb for two sessions. Micro-load to ${W + 0.5} lb and match last time's reps.`;
+    status = { cls:'up', text:'Micro-load +0.5 lb' };
   } else {
-    targets = Array.from({length:n}, (_, i) => ({ w: W, r: top[i] ? Math.min(hi, Math.max(lo, top[i].r + 1)) : lo }));
+    targets = Array.from({length:n}, (_, i) => ({ w:W, r:Math.min(hi, Math.max(lo, ref(i).r + 1)) }));
     why = `Stay at ${fmtW(W)}${W ? ' lb' : ''}. Add a rep per set until all ${n} sets reach ${hi}, then add ${inc} lb.`;
     status = { cls:'build', text:`${atTop}/${n} sets at ${hi}` };
   }
-  return { targets, why, last, status };
+  return { targets, why, last, status, micro, wave:isWave(p), waveTo };
 }
 function lastCore(name, k) {
   for (const w of priorWorkouts('core', k)) {
@@ -796,23 +964,26 @@ function coreRec(name, p, k) {
   return { spec, targets, why, last };
 }
 function cardioRec(session, k) {
-  const c = CARDIO[session];
+  const c = cardioPlan(session, k), deload = programInfo(k).deload;
   let last = null;
   for (const w of priorWorkouts('cardio', k)) {
     const e = w.exercises[0];
     if (e && e.planned === c.type && !e.skipped && num(e.duration) > 0) { last = { date:w.date, ...e }; break; }
   }
   if (c.type === 'HIIT') {
-    const rounds = last && num(last.rounds) ? Math.min(16, last.rounds + 1) : 10;
-    const dur = Math.round(rounds * 2 + 5);
-    return { duration:dur, rounds, hr:'160–185 bpm on efforts', why: last ? `Last time: ${last.rounds ?? '?'} rounds. Add one round${rounds === 16 ? ' (cap reached)' : ''}.` : 'Start at 10 rounds with a 5 min warm-up.', last };
+    const rounds = deload ? c.rounds : last && num(last.rounds) ? Math.min(c.maxRounds, last.rounds + 1) : c.rounds;
+    const dur = rounds + 5; // 5 min warm-up plus one minute per round
+    const why = deload ? `Deload week: ${rounds} rounds instead of the usual ${c.baseRounds}.`
+      : last ? `Last time: ${last.rounds ?? '?'} rounds. ${rounds > (last.rounds ?? 0) ? `Add one round, up to ${c.maxRounds}.` : `Hold at the ${c.maxRounds}-round cap for this phase.`}`
+      : `Start at ${c.rounds} rounds with a 5 min warm-up.`;
+    return { duration:dur, rounds, hr:'160–185 bpm on efforts', why, last };
   }
-  if (!last) return { duration:c.duration, hr:`${Z2[0]}–${Z2[1]} bpm`, why:`Hold average HR between ${Z2[0]} and ${Z2[1]} bpm.`, last };
-  const hr = num(last.hr), dur = num(last.duration);
-  if (hr && hr < Z2[0]) return { duration:Math.max(c.duration, dur), hr:`${Z2[0]}–${Z2[1]} bpm`, why:`Last avg HR ${hr} was under Zone 2. Raise speed, incline or resistance.`, last };
-  if (hr && hr > Z2[1]) return { duration:Math.max(c.duration, dur), hr:`${Z2[0]}–${Z2[1]} bpm`, why:`Last avg HR ${hr} was above Zone 2. Ease the pace and hold the same time.`, last };
-  const next = Math.min(45, Math.max(c.duration, dur + 2));
-  return { duration:next, hr:`${Z2[0]}–${Z2[1]} bpm`, why: hr ? `In zone last time (${hr} bpm). Extend to ${next} min.` : `Log your average HR so the target can adjust.`, last };
+  const hr = last ? num(last.hr) : null;
+  const why = deload ? `Deload week: ${c.duration} min at an easy Zone 2 pace.`
+    : hr && hr < Z2[0] ? `Last avg HR ${hr} was under Zone 2. Raise speed, incline or resistance.`
+    : hr && hr > Z2[1] ? `Last avg HR ${hr} was above Zone 2. Ease the pace and hold the same time.`
+    : hr ? `In zone last time (${hr} bpm). Hold ${c.duration} min.` : `Hold average HR between ${Z2[0]} and ${Z2[1]} bpm.`;
+  return { duration:c.duration, hr:`${Z2[0]}–${Z2[1]} bpm`, why, last };
 }
 
 // ═══ Muscle groups (primary counts 1 set, secondary 0.5) ═════════════
@@ -912,7 +1083,8 @@ function whenAgo(d, k) { const n = daysBetween(d, k); return n === 7 ? 'last wee
 function overload(rec, p, k) {
   const [lo, hi] = range(p[3]);
   const st = rec.status?.cls || 'calib';
-  if (!rec.last) return { cls:'hold', act:'Baseline', text:rec.why, to:`? × ${lo}` };
+  if (!rec.last) return { cls:'hold', act:'Baseline', text:rec.why, to:`? × ${rec.targets[0].r}` };
+  if (rec.wave) return { cls:rec.status.cls === 'up' ? 'up' : 'build', act:rec.status.cls === 'up' ? `+${liftInc(sessionFor(k), p[0])} lb` : 'Waves', text:rec.why, to:rec.waveTo };
   const W = Math.max(...rec.last.sets.map(s => num(s.w) || 0));
   const top = rec.last.sets.filter(s => (num(s.w) || 0) === W);
   const at = W ? `${W} lb` : 'bodyweight';
@@ -920,6 +1092,7 @@ function overload(rec, p, k) {
   const head = `${whenAgo(rec.last.date, k)[0].toUpperCase()}${whenAgo(rec.last.date, k).slice(1)} you hit ${setsSummary(top)} at ${at}.`;
   const reps = [...new Set(rec.targets.map(t => t.r))];
   const to = `${tw} × ${reps.length === 1 ? reps[0] : rec.targets.map(t => t.r).join('/')}`;
+  if (rec.micro) return { cls:'up', act:'+0.5 lb', text:`${head} ${rec.why}`, to };
   if (st === 'up') return { cls:'up', act:W ? `+${t0.w - W} lb` : '+1 rep', text:`${head} ${W ? `Try adding ${t0.w - W} lb: ${t0.w} lb for ${lo}+ reps.` : `Go for ${t0.r} reps, or add weight.`}`, to };
   if (st === 'down') return { cls:'down', act:`−${W - t0.w} lb`, text:`${head} That's under ${lo} reps, so drop to ${t0.w} lb and own the range.`, to };
   if (st === 'calib') return { cls:'hold', act:'Hold', text:`${head} ${rec.why.replace(/^.*?lands/, `${at} lands`)}`, to };
@@ -973,13 +1146,13 @@ restBar.addEventListener('click', e => {
 function startRestFor(i, j) {
   const k = keyOf(selected), session = sessionFor(k), d = curDraft(); const ex = d?.exercises[i]; if (!ex) return;
   let secs = 45, label = ex.name;
-  if (tab === 'lift') { const p = LIFTING[session]?.find(r => r[0] === ex.planned); secs = restSecs(p ? p[4] : '2 min'); }
+  if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); secs = restSecs(p ? p[4] : '2 min'); }
   const f = tab === 'lift' ? 'r' : 'v';
   const nj = ex.sets.findIndex((s, x) => x > j && !(num(s[f]) > 0));
   let next;
   if (nj >= 0) {
     let tgt = '';
-    if (tab === 'lift') { const p = LIFTING[session]?.find(r => r[0] === ex.planned); if (p) { const t = liftRec(ex.name, p, session, k).targets[nj]; if (t) tgt = t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`; } }
+    if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); if (p) { const t = liftRec(ex.name, p, session, k).targets[nj]; if (t) tgt = t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`; } }
     next = `Next: set ${nj + 1} of ${ex.sets.length}${tgt}`;
   } else {
     const nx = d.exercises.slice(i + 1).find(x => !x.skipped);
@@ -1054,12 +1227,16 @@ function dayHead(k, session) {
 
 function renderDay(type) {
   const k = keyOf(selected), session = sessionFor(k);
-  if (!session) return dayHead(k, session) + `<div class="empty">The program starts Thursday, October 8, 2026.<br>To log a session on this day anyway, choose one above.</div>`;
+  if (!session) {
+    const long = d => d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    const msg = programInfo(k).status === 'complete' ? `The ${PROGRAM_WEEKS}-week program ended ${long(fromKey(programEnd()))}.` : `The program starts ${long(START)}.`;
+    return dayHead(k, session) + `<div class="empty">${msg}<br>To log a session on this day anyway, choose one above.</div>`;
+  }
   if (session === 'REST') return dayHead(k, session) + `<div class="empty">Rest day. Walk, stretch, or do mobility work.<br>If you trained anyway, choose the session above.</div>`;
   const d = getDraft(type);
   let body = '';
   if (type === 'lift') {
-    const wk = programWeek(k), cal = wk <= CAL_WEEKS;
+    const wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
     body = `<div class="phase ${cal ? 'calib' : ''}"><b>${cal ? `Calibration · Week ${wk} of ${CAL_WEEKS}` : `Double progression · Week ${wk}`}</b><span>${cal
       ? 'Find a weight that lands inside each rep bracket with about 2 reps left. Log every set. No rep-chasing yet.'
       : 'Keep the weight until every working set hits the top of the bracket, then add the smallest increment and drop back to the bottom.'}</span></div>`
@@ -1099,7 +1276,7 @@ function pickOptions(type, i, ex, q) {
 }
 
 function liftRow(ex, i, session, k) {
-  const p = LIFTING[session].find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
+  const p = liftRows(session, k).find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
   const rec = liftRec(ex.name, p, session, k);
   const targets = rec.targets.map((t, j) => `<span class="tgt"><b>S${j+1}</b>${t.w === null ? '? lb' : fmtW(t.w) + (t.w ? ' lb' : '')} × ${t.r}</span>`).join('');
   const lastStr = rec.last ? `Last ${shortDate(rec.last.date)}: ${rec.last.sets.map(s => `${fmtW(num(s.w))}×${s.r}`).join(', ')} · best e1RM ${Math.max(...rec.last.sets.map(s => e1rm(num(s.w), s.r) || 0)) || '—'}` : '';
@@ -1112,7 +1289,7 @@ function liftRow(ex, i, session, k) {
     const est = e1rm(num(s.w), num(s.r));
     return `<tr class="${num(s.r) > 0 ? 'done' : ''}">
       <td class="n">${j+1}</td>
-      <td><input id="lw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="2.5" min="0" placeholder="${t && t.w !== null ? t.w : 'lb'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} weight"></td>
+      <td><input id="lw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${t && t.w !== null ? t.w : 'lb'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} weight"></td>
       <td><input id="lr-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="r" type="number" inputmode="numeric" min="0" placeholder="${t ? t.r : 'reps'}" value="${s.r ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} reps"></td>
       <td class="e1" id="le-${i}-${j}">${est || '–'}${prior && est > prior.v && !ex.skipped ? '<span class="pr">PR</span>' : ''}</td></tr>`;
   }).join('');
@@ -1143,7 +1320,7 @@ function prBanner(d) {
 }
 function overloadPlan(d, session, k) {
   const rows = d.exercises.filter(ex => !ex.skipped).map(ex => {
-    const p = LIFTING[session].find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
+    const p = liftRows(session, k).find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
     const rec = liftRec(ex.name, p, session, k), ov = overload(rec, p, k);
     const W = rec.last ? Math.max(...rec.last.sets.map(s => num(s.w) || 0)) : null;
     const last = rec.last ? `${fmtW(W)}${W ? ' lb' : ''} · ${setsSummary(rec.last.sets.filter(s => (num(s.w) || 0) === W))}` : 'no history';
@@ -1158,7 +1335,7 @@ function overloadPlan(d, session, k) {
 }
 
 function coreRow(ex, i, session, k) {
-  const p = CORE[session].find(r => r[0] === ex.planned) || [ex.planned,'3','10 reps'];
+  const p = coreRows(session, k).find(r => r[0] === ex.planned) || [ex.planned,'3','10 reps'];
   const rec = coreRec(ex.name, p, k);
   const u = rec.spec.unit;
   const unitLabel = u === 'sec' ? 'Seconds' : u === 'yd' ? 'Yards' : 'Reps';
@@ -1169,7 +1346,7 @@ function coreRow(ex, i, session, k) {
     return `<tr class="${num(s.v) > 0 ? 'done' : ''}">
       <td class="n">${j+1}</td>
       <td><input id="cv-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="v" type="number" inputmode="numeric" min="0" placeholder="${t ? t.v : ''}" value="${s.v ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} ${unitLabel}"></td>
-      <td><input id="cw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="2.5" min="0" placeholder="${t && t.w ? t.w : 'opt.'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} added weight"></td></tr>`;
+      <td><input id="cw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${t && t.w ? t.w : 'opt.'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} added weight"></td></tr>`;
   }).join('');
   return `<div class="ex${ex.skipped ? ' skipped' : ''}">
     <div class="plan">
@@ -1190,7 +1367,7 @@ function coreRow(ex, i, session, k) {
 }
 
 function cardioRow(ex, session, k) {
-  const c = CARDIO[session];
+  const c = cardioPlan(session, k);
   const rec = cardioRec(session, k);
   const hiit = c.type === 'HIIT';
   const dis = ex.skipped ? 'disabled' : '';
@@ -1441,8 +1618,8 @@ main.addEventListener('click', async e => {
   if (act === 'pick') { const ex = curDraft().exercises[i]; ex.name = b.dataset.name; closePicker(); touch(); renderNow(); return; }
   if (act === 'fill') {
     const k = keyOf(selected), session = sessionFor(k), ex = curDraft().exercises[i];
-    if (tab === 'lift') { const p = LIFTING[session].find(r => r[0] === ex.planned); const rec = liftRec(ex.name, p, session, k); ex.sets = rec.targets.map(t => ({ w:t.w, r:t.r })); }
-    else { const p = CORE[session].find(r => r[0] === ex.planned); const rec = coreRec(ex.name, p, k); ex.sets = rec.targets.map(t => ({ v:t.v, w:t.w })); }
+    if (tab === 'lift') { const p = liftRows(session, k).find(r => r[0] === ex.planned); const rec = liftRec(ex.name, p, session, k); ex.sets = rec.targets.map(t => ({ w:t.w, r:t.r })); }
+    else { const p = coreRows(session, k).find(r => r[0] === ex.planned); const rec = coreRec(ex.name, p, k); ex.sets = rec.targets.map(t => ({ v:t.v, w:t.w })); }
     touch(); renderNow(); return;
   }
   if (act === 'add') { const ex = curDraft().exercises[i]; const last = ex.sets[ex.sets.length - 1] || {}; ex.sets.push(tab === 'lift' ? { w:last.w ?? null, r:null } : { v:null, w:last.w ?? null }); touch(); renderNow(); return; }
