@@ -7,6 +7,7 @@
   const FILE_NAME = 'training-calendar.json';
   const STORE_KEY = 'derek-tc-store-v1';
   const LINK_KEY = 'derek-tc-drive-linked';
+  const TOKEN_KEY = 'derek-tc-drive-token';
   const TOMBSTONE_MS = 90 * 864e5;
 
   const ls = {
@@ -21,11 +22,15 @@
   try { const s = JSON.parse(ls.get(STORE_KEY)); if (s && s.docs) store = s; } catch {}
   const saveStore = () => ls.set(STORE_KEY, JSON.stringify(store));
 
-  let state = 'off'; // off | syncing | ok | needs-auth | offline | error
   let token = null, tokenExp = 0, fileId = null, lastSync = null;
+  let hint = null;
+  let state = 'off'; // off | syncing | ok | needs-auth | offline | error
+
   let tokenClient = null, synced = false, busy = false, again = false, pushTimer = null;
   const stateCbs = [], listeners = [];
 
+  // Reuse a still-valid access token across page loads (tokens last about an hour).
+  try { const t = JSON.parse(ls.get(TOKEN_KEY)); if (t) { hint = t.hint || null; if (t.exp > Date.now() + 120000) { token = t.t; tokenExp = t.exp; } } } catch {}
   const linked = () => ls.get(LINK_KEY) === '1';
   function setState(s) { state = s; stateCbs.forEach(cb => { try { cb(s); } catch {} }); }
 
@@ -79,9 +84,11 @@
       document.head.appendChild(s);
     });
   }
+  const gisReady = () => window.google && google.accounts && google.accounts.oauth2;
   async function getToken(interactive) {
     if (token && Date.now() < tokenExp - 60000) return token;
-    await loadGIS();
+    // Keep this synchronous when GIS is loaded so the popup still counts as a user gesture.
+    if (!gisReady()) await loadGIS();
     return new Promise((res, rej) => {
       const timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { auth: true })), 25000);
       tokenClient = tokenClient || google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => {} });
@@ -90,18 +97,30 @@
         if (r.error) return rej(Object.assign(new Error(r.error), { auth: true }));
         token = r.access_token; tokenExp = Date.now() + (+r.expires_in || 3600) * 1000;
         ls.set(LINK_KEY, '1');
+        ls.set(TOKEN_KEY, JSON.stringify({ t: token, exp: tokenExp, hint }));
+        if (!hint) fetchHint();
         res(token);
       };
       tokenClient.error_callback = e => { clearTimeout(timer); rej(Object.assign(new Error((e && e.type) || 'popup'), { auth: true })); };
-      tokenClient.requestAccessToken({ prompt: interactive ? '' : 'none' });
+      const opts = { prompt: interactive ? '' : 'none' };
+      if (hint) opts.hint = hint;
+      tokenClient.requestAccessToken(opts);
     });
+  }
+  // Remember which Google account was used so later sign-ins can skip the account chooser.
+  async function fetchHint() {
+    try {
+      const r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', { headers: { Authorization: 'Bearer ' + token } });
+      const e = r.ok && (await r.json()).user?.emailAddress;
+      if (e) { hint = e; ls.set(TOKEN_KEY, JSON.stringify({ t: token, exp: tokenExp, hint })); }
+    } catch {}
   }
 
   // ── Drive file ───────────────────────────────────────────────────
   async function drive(url, init, interactive, retried) {
     const t = await getToken(interactive);
     const r = await fetch(url, { ...init, headers: { ...(init && init.headers), Authorization: 'Bearer ' + t } });
-    if (r.status === 401 && !retried) { token = null; return drive(url, init, interactive, true); }
+    if (r.status === 401 && !retried) { token = null; ls.del(TOKEN_KEY); return drive(url, init, interactive, true); }
     if (r.status === 401 || r.status === 403) throw Object.assign(new Error('auth ' + r.status), { auth: true });
     if (!r.ok) throw new Error('drive ' + r.status);
     return r;
@@ -181,14 +200,20 @@
     syncNow: () => sync(linked()),
     disconnect() {
       try { if (token && window.google) google.accounts.oauth2.revoke(token, () => {}); } catch {}
-      token = null; tokenExp = 0; fileId = null; synced = false; ls.del(LINK_KEY); setState('off');
+      token = null; tokenExp = 0; fileId = null; synced = false; ls.del(LINK_KEY); ls.del(TOKEN_KEY); hint = null; setState('off');
     },
     exportJSON: () => JSON.stringify({ v: 1, app: 'training-calendar', docs: store.docs }),
     importJSON,
   };
 
   // Keep devices fresh: on open, when the tab becomes visible, when back online, and every 2 minutes while visible.
-  if (linked()) { setState('syncing'); setTimeout(() => sync(false), 300); }
+  if (linked()) {
+    setState('syncing');
+    loadGIS().catch(() => {}).then(() => sync(false));
+    // If silent sign-in is blocked, retry on the next tap: a user gesture lets Google's popup open
+    // (it closes by itself when access was already granted).
+    document.addEventListener('pointerdown', () => { if (state === 'needs-auth' && !busy) sync(true); }, true);
+  }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(false); });
   window.addEventListener('online', () => sync(false));
   setInterval(() => { if (!document.hidden) sync(false); }, 120000);
