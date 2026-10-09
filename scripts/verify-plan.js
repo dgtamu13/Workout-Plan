@@ -250,6 +250,40 @@ check('HIIT progression: +1 round per session up to the phase cap', () => {
   assert.strictEqual(run(`cardioRec('PUSH A', ${J(weekStart(24))})`).rounds, 10);
 });
 
+console.log('Readiness check-in');
+const checkin = (k, sleep, soreness, energy) => run(`fatigueLog[${J(k)}] = { sleep:${sleep}, soreness:${soreness}, energy:${energy}, done:true }`);
+check('Low readiness (avg 2 or below): today\'s weights drop 10%, rounded to 2.5 lb', () => {
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-17', ROW[0], sets(135, [7, 7, 6, 6]));
+  checkin('2026-10-24', 2, 4, 2); // soreness 4 counts as 2, so the average is 2
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-24');
+  assert.strictEqual(r.fatigue, 'low'); assert.ok(r.targets.every(t => t.w === 122.5), J(r.targets));
+});
+check('High readiness (avg 4+): weights unchanged, push note added', () => {
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-17', ROW[0], sets(135, [7, 7, 6, 6]));
+  checkin('2026-10-24', 5, 1, 4);
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-24');
+  assert.strictEqual(r.fatigue, 'high'); assert.ok(r.targets.every(t => t.w === 135)); assert.ok(/push for the top/.test(r.why));
+});
+check('Soreness counts against readiness (5 = very sore)', () => {
+  run('fatigueLog = {}'); checkin('2026-10-24', 3, 5, 2); // (3 + 1 + 2) / 3 = 2
+  assert.strictEqual(run("readiness('2026-10-24').low"), true);
+  checkin('2026-10-24', 3, 1, 2); // (3 + 5 + 2) / 3 = 3.3
+  assert.strictEqual(run("readiness('2026-10-24').low"), false);
+});
+check('No check-in: targets unchanged', () => {
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-17', ROW[0], sets(135, [7, 7, 6, 6]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-24');
+  assert.strictEqual(r.fatigue, undefined); assert.ok(r.targets.every(t => t.w === 135));
+});
+check('A low-readiness session is ignored when setting the next targets', () => {
+  clearLogs(); run('fatigueLog = {}');
+  logLift('2026-10-17', ROW[0], sets(135, [8, 8, 8, 8]));
+  checkin('2026-10-24', 1, 5, 1); logLift('2026-10-24', ROW[0], sets(122.5, [8, 8, 8, 8]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-31');
+  assert.deepStrictEqual(r.targets.map(t => t.w), [140, 140, 140, 140]);
+  run('fatigueLog = {}');
+});
+
 console.log('Milestones');
 check('Milestone table matches the plan', () => {
   assert.deepStrictEqual(run('MILESTONES').map(m => [m['Barbell Bench Press'], m['Back Squat'], m['Conventional Deadlift'], m['Standing OHP']]),

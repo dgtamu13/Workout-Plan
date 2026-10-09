@@ -148,6 +148,38 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .pick-btn .caret { margin-left:auto; color:var(--fg3); font-size:.8rem; }
 .pick-btn[aria-expanded="true"] { border-color:var(--accent); }
 .swapped { font-size:.7rem; color:var(--yellow); margin-top:4px; }
+.warmup { margin-top:6px; padding:6px 8px; background:var(--acc-dim); border-radius:6px; font-size:.75rem; }
+.warmup-title { font-weight:600; color:var(--fg2); margin-bottom:4px; }
+.warmup-sets { display:flex; flex-wrap:wrap; gap:8px; color:var(--fg); }
+.warmup-sets span { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:2px 7px; }
+.sess-clock { font-family:var(--mono); font-size:.8rem; color:var(--fg2); margin-left:auto; }
+.checkin-banner { background:var(--acc-dim); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:12px; }
+.checkin-banner b { display:block; margin-bottom:8px; font-size:.85rem; }
+.checkin-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+.checkin-row label { display:flex; flex-direction:column; gap:4px; font-size:.75rem; color:var(--fg2); }
+.checkin-row select { background:var(--input); border:1px solid var(--border); color:var(--fg); border-radius:6px; padding:4px 8px; }
+.phase.deload { --sc:var(--yellow); }
+.phase.deload b { color:var(--yellow); }
+.trend-alerts { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.trend-alert { padding:10px 14px; border-radius:8px; font-size:.82rem; }
+.trend-alert.warn { background:color-mix(in srgb, var(--yellow) 15%, var(--card)); border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent); }
+.trend-alert.info { background:color-mix(in srgb, var(--pull) 15%, var(--card)); border:1px solid color-mix(in srgb, var(--pull) 40%, transparent); }
+.ex.ss-linked { border-left: 3px solid var(--pull); }
+.nutri-toast { position:fixed; bottom:calc(env(safe-area-inset-bottom,0px) + 80px); left:50%; transform:translateX(-50%) translateY(20px); background:var(--card); border:1px solid var(--green); color:var(--fg); border-radius:10px; padding:10px 18px; font-size:.85rem; font-weight:500; opacity:0; transition:opacity .3s, transform .3s; z-index:200; pointer-events:none; white-space:nowrap; }
+.nutri-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.sum-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:300; }
+.summary-card { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surf); border:1px solid var(--border); border-radius:14px; padding:20px; z-index:301; min-width:300px; max-width:480px; width:90vw; }
+.sum-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:.9rem; }
+.sum-close { background:none; border:none; color:var(--fg2); font-size:1.1rem; cursor:pointer; padding:4px 8px; }
+.sum-stats { display:flex; gap:16px; margin-bottom:14px; }
+.sum-stats > div { flex:1; text-align:center; background:var(--card); border-radius:8px; padding:10px; }
+.sum-val { font-size:1.6rem; font-weight:700; font-family:var(--disp); }
+.sum-lbl { font-size:.7rem; color:var(--fg2); margin-top:2px; }
+.sum-prs { margin-bottom:10px; }
+.sum-pr { font-size:.82rem; padding:4px 0; border-bottom:1px solid var(--border); }
+.sum-exs { font-size:.78rem; color:var(--fg2); max-height:160px; overflow-y:auto; margin-bottom:12px; }
+.sum-ex { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--border); }
+.sum-copy { width:100%; }
 .pop { position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:40; background:var(--surf); border:1px solid var(--accent); border-radius:10px; box-shadow:0 8px 20px rgba(0,0,0,.28); padding:8px; contain:layout style; }
 .pop input { width:100%; margin-bottom:6px; }
 .pop-group { font-size:.6rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--fg3); padding:6px 6px 4px; }
@@ -756,11 +788,16 @@ let hf = { type:'all', from:keyOf(START), to:'', q:'' };
 let csvFallback = null;
 let delArm = null;
 
-const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', t:'derek-tc-tab' };
+let sessionStart = null;
+let _clockIv = null;
+let swapMemory = {};
+let fatigueLog = {};
+const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', t:'derek-tc-tab', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue' };
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
+swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {});
 { const t = lsGet(LS.t, null); if (['lift','core','cardio','body','meals','progress','history'].includes(t)) tab = t; }
 if (['#lift','#core','#cardio','#body','#meals','#progress','#history'].includes(location.hash)) tab = location.hash.slice(1);
 
@@ -829,7 +866,7 @@ function sessionFor(k) {
 function buildDraft(type, k, session) {
   const base = { date:k, type, session, notes:'', exercises:[], ver:PLAN_VER };
   if (!session || session === 'REST') return base;
-  if (type === 'lift') base.exercises = liftRows(session, k).map(([n,,s]) => ({ planned:n, name:n, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }));
+  if (type === 'lift') base.exercises = liftRows(session, k).map(([n,,s]) => { const swapKey = `${session}:${n}`; const name = swapMemory[swapKey] || n; return { planned:n, name, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }; });
   if (type === 'core') base.exercises = coreRows(session, k).map(([n,s,t]) => ({ planned:n, name:n, skipped:false, unit:coreSpec(t).unit, sets:Array.from({length:+s}, () => ({ v:null, w:null })) }));
   if (type === 'cardio') { const c = cardioPlan(session, k); base.exercises = [{ planned:c.type, name:c.type, machine:c.recommended, skipped:false, duration:null, hr:null, maxhr:null, distance:null, rounds:null, level:'' }]; }
   return base;
@@ -858,11 +895,24 @@ function hasData(d) {
 function priorWorkouts(type, beforeKey) {
   return Object.values(workouts).filter(w => w.type === type && w.date < beforeKey).sort((a, b) => b.date.localeCompare(a.date));
 }
-// Prior sessions of a lift, newest first. Deload-week sessions are skipped so progression resumes from the last normal week.
+// ═══ Readiness (pre-session check-in) ═══
+// Sleep and energy: 5 is best. Soreness: 5 is very sore, so it counts inverted.
+const LOW_READY = 0.9;
+function readiness(k) {
+  const f = fatigueLog[k];
+  if (!f || !f.done) return null;
+  const score = (f.sleep + (6 - f.soreness) + f.energy) / 3;
+  return { score, low: score <= 2, high: score >= 4 };
+}
+// Weight multiplier for the day: 10% lighter on a low-readiness day, otherwise unchanged.
+function fatigueAdjust(k) { const r = readiness(k); return r && r.low ? LOW_READY : 1.0; }
+
+// Prior sessions of a lift, newest first. Deload-week and low-readiness sessions are skipped so progression
+// resumes from the last normal session.
 function liftHistory(name, k, count) {
   const out = [];
   for (const w of priorWorkouts('lift', k)) {
-    if (programInfo(w.date).deload) continue;
+    if (programInfo(w.date).deload || fatigueAdjust(w.date) < 1) continue;
     const e = w.exercises.find(x => x.name === name && !x.skipped && x.sets.some(s => num(s.r) > 0));
     if (e) { out.push({ date:w.date, sets:e.sets.filter(s => num(s.r) > 0) }); if (out.length >= count) break; }
   }
@@ -884,7 +934,22 @@ function firstSession(name, p, session, k, lo, hi, n) {
   return { targets:Array.from({length:n}, (_, i) => ({ w:null, r: wave ? WAVE_REPS[i % 6] : r0 })), last:null, wave,
     status:{ cls:'calib', text:'Calibrate' }, why };
 }
-function liftRec(name, p, session, k) {
+function liftRec(name, p, session, k) { return applyReadiness(planLiftRec(name, p, session, k), k); }
+function applyReadiness(rec, k) {
+  const r = readiness(k);
+  if (!r) return rec;
+  if (r.low && rec.targets.some(t => t.w > 0)) {
+    rec.targets = rec.targets.map(t => t.w > 0 ? { ...t, w: round25(t.w * LOW_READY) } : t);
+    if (rec.waveTo) rec.waveTo += ' · −10% today';
+    rec.fatigue = 'low';
+    rec.why = `Low readiness today (${r.score.toFixed(1)}/5), so targets are 10% lighter. Your next session's targets ignore today. ${rec.why}`;
+  } else if (r.high) {
+    rec.fatigue = 'high';
+    rec.why += ' Readiness is high today: push for the top of the rep range.';
+  }
+  return rec;
+}
+function planLiftRec(name, p, session, k) {
   const [lo, hi] = range(p[3]); const n = +p[2];
   const info = programInfo(k), S = isStrength(session), wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
   const hist = liftHistory(name, k, 2), last = hist[0] || null;
@@ -1092,6 +1157,7 @@ function overload(rec, p, k) {
   const head = `${whenAgo(rec.last.date, k)[0].toUpperCase()}${whenAgo(rec.last.date, k).slice(1)} you hit ${setsSummary(top)} at ${at}.`;
   const reps = [...new Set(rec.targets.map(t => t.r))];
   const to = `${tw} × ${reps.length === 1 ? reps[0] : rec.targets.map(t => t.r).join('/')}`;
+  if (rec.fatigue === 'low') return { cls:'down', act:'−10% today', text:`${head} Low readiness today, so targets are 10% lighter (${t0.w ? t0.w + ' lb' : 'bodyweight'}). Your next session's targets ignore today.`, to };
   if (rec.micro) return { cls:'up', act:'+0.5 lb', text:`${head} ${rec.why}`, to };
   if (st === 'up') return { cls:'up', act:W ? `+${t0.w - W} lb` : '+1 rep', text:`${head} ${W ? `Try adding ${t0.w - W} lb: ${t0.w} lb for ${lo}+ reps.` : `Go for ${t0.r} reps, or add weight.`}`, to };
   if (st === 'down') return { cls:'down', act:`−${W - t0.w} lb`, text:`${head} That's under ${lo} reps, so drop to ${t0.w} lb and own the range.`, to };
@@ -1103,6 +1169,137 @@ function overload(rec, p, k) {
 const REST = { end:0, total:1, iv:null, to:null, done:false, auto: lsGet('derek-tc-rest-auto', true) };
 const restSecs = str => { const m = String(str).match(/(\d+(?:\.\d+)?)\s*(min|sec)/i); return m ? Math.round(+m[1] * (/min/i.test(m[2]) ? 60 : 1)) : 90; };
 const fmtClock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+function warmupSets(targetW) {
+  if (!targetW || targetW < 45) return [];
+  const sets = [
+    { pct:'50%', w: Math.round(targetW * 0.5 / 5) * 5, r: 8 },
+    { pct:'70%', w: Math.round(targetW * 0.7 / 5) * 5, r: 5 },
+    { pct:'85%', w: Math.round(targetW * 0.85 / 5) * 5, r: 3 },
+  ];
+  return sets.filter(s => s.w >= 45);
+}
+
+function startSessionClock() {
+  if (sessionStart) return;
+  sessionStart = Date.now();
+  const el = document.getElementById('sessClock');
+  if (el) el.hidden = false;
+  clearInterval(_clockIv);
+  _clockIv = setInterval(() => {
+    const el = document.getElementById('sessClock');
+    if (!el) return;
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    el.textContent = `⏱ ${fmtClock(s)}`;
+  }, 1000);
+}
+
+function showNutriToast(phase) {
+  const msgs = {
+    post: '🥩 Protein window — eat within 45 min. Hit your protein target.',
+    pre: '🍌 Fuel up — eat a light meal 60–90 min before training.'
+  };
+  let t = document.getElementById('nutriToast');
+  if (!t) { t = document.createElement('div'); t.id = 'nutriToast'; t.className = 'nutri-toast'; document.body.appendChild(t); }
+  t.textContent = msgs[phase];
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 8000);
+}
+
+function isDeloadWeek(k) {
+  return programInfo(k).deload;
+}
+
+
+function streakAndConsistency() {
+  const today = todayKey();
+  let streak = 0;
+  let d = today;
+  while (true) {
+    const s = sessionFor(d);
+    const done = s && s !== 'REST' && ['lift','core','cardio'].some(t => workouts[`${d}_${t}`]);
+    const rest = s === 'REST';
+    if (rest) { d = addDays(d, -1); continue; }
+    if (!done) break;
+    streak++;
+    d = addDays(d, -1);
+    if (streak > 365) break;
+  }
+  const start4 = addDays(today, -27);
+  let scheduled = 0, completed = 0;
+  for (let dd = start4; dd <= today; dd = addDays(dd, 1)) {
+    const s = sessionFor(dd);
+    if (!s || s === 'REST') continue;
+    scheduled++;
+    if (['lift','core','cardio'].some(t => workouts[`${dd}_${t}`])) completed++;
+  }
+  const pct = scheduled ? Math.round(100 * completed / scheduled) : null;
+  return { streak, completed, scheduled, pct };
+}
+
+function trendAlerts() {
+  const alerts = [];
+  const today = todayKey();
+  const recent = bodyEntries().filter(e => e.date >= addDays(today, -21) && num(e.weight));
+  if (recent.length >= 4) {
+    const weights = recent.map(e => num(e.weight));
+    const range2 = Math.max(...weights) - Math.min(...weights);
+    if (range2 < 1.0) alerts.push({ type:'warn', msg:`⚖️ Weight has been flat for 3+ weeks (range: ${range2.toFixed(1)} lb). Consider adjusting calories.` });
+  }
+  const cutoff = addDays(today, -30);
+  const prs = allTimePRs();
+  const recent_prs = Object.values(prs).filter(p => p.date >= cutoff);
+  if (Object.keys(prs).length > 0 && recent_prs.length === 0) {
+    alerts.push({ type:'warn', msg:`🏆 No new PRs in the last 30 days. You may need a deload or program adjustment.` });
+  }
+  let logged = 0;
+  for (let i = 1; i <= 7; i++) {
+    const dd = addDays(today, -i);
+    if (mealLog[dd]) logged++;
+  }
+  if (logged < 4 && Object.keys(mealLog).length > 0) {
+    alerts.push({ type:'info', msg:`📋 Only ${logged}/7 days logged this week. Consistent logging improves results.` });
+  }
+  return alerts;
+}
+
+// The session summary card lives on <body>, outside #main, so its buttons get their own listener.
+function closeSummary() { document.querySelectorAll('.sum-overlay, .summary-card').forEach(el => el.remove()); }
+function copySummary(b) {
+  const k = keyOf(selected), id = `${k}_lift`, w = workouts[id];
+  if (!w) return;
+  const prs = sessionPRs({ ...w, type:'lift' });
+  const vol = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.reduce((b, s) => b + (num(s.w)||0)*(num(s.r)||0), 0)), 0);
+  const lines = [`${w.session} · ${longDate(k)}`, `Sets: ${w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.filter(s => num(s.r) > 0).length), 0)} · Volume: ${Math.round(vol).toLocaleString()} lb`];
+  if (prs.length) lines.push('PRs: ' + prs.map(p => `${p.name} e1RM ${p.v} lb`).join(', '));
+  w.exercises.filter(e => !e.skipped).forEach(e => lines.push(`${e.name}: ${e.sets.filter(s => num(s.r) > 0).map(s => `${fmtW(s.w)}×${s.r}`).join(', ')}`));
+  navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+  b.textContent = 'Copied!';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act="sum-close"], [data-act="sum-copy"]');
+  if (!b) return;
+  if (b.dataset.act === 'sum-close') closeSummary(); else copySummary(b);
+});
+
+function sessionSummaryHTML(w, type, k) {
+  if (type !== 'lift') return '';
+  const prs = sessionPRs({ ...w, type:'lift' });
+  const vol = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.reduce((b, s) => b + (num(s.w)||0)*(num(s.r)||0), 0)), 0);
+  const sets = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.filter(s => num(s.r) > 0).length), 0);
+  const session = w.session || sessionFor(fromKey(k));
+  return `<div class="summary-card" id="sumCard">
+    <div class="sum-head"><b>${esc(session)} · ${longDate(k)}</b><button data-act="sum-close" class="sum-close">✕</button></div>
+    <div class="sum-stats">
+      <div><div class="sum-val">${sets}</div><div class="sum-lbl">Sets</div></div>
+      <div><div class="sum-val">${Math.round(vol).toLocaleString()}</div><div class="sum-lbl">lb moved</div></div>
+      <div><div class="sum-val">${prs.length || '—'}</div><div class="sum-lbl">PRs</div></div>
+    </div>
+    ${prs.length ? `<div class="sum-prs">${prs.map(p => `<div class="sum-pr">🏆 ${esc(p.name)} · e1RM <b>${p.v} lb</b> <span class="note">(+${p.v - p.prev})</span></div>`).join('')}</div>` : ''}
+    <div class="sum-exs">${w.exercises.filter(e => !e.skipped).map(e => `<div class="sum-ex"><span>${esc(e.name)}</span><span>${e.sets.filter(s=>num(s.r)>0).map(s=>`${fmtW(s.w)}×${s.r}`).join(', ')}</span></div>`).join('')}</div>
+    <button class="mini sum-copy" data-act="sum-copy">Copy summary</button>
+  </div><div class="sum-overlay" data-act="sum-close"></div>`;
+}
+
 let _actx = null;
 function unlockAudio() { try { _actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (_actx.state === 'suspended') _actx.resume(); } catch {} }
 document.addEventListener('pointerdown', unlockAudio, { passive:true });
@@ -1143,7 +1340,31 @@ restBar.addEventListener('click', e => {
   if (REST.done) { REST.done = false; clearTimeout(REST.to); restBar.classList.remove('done'); const l = document.getElementById('rbLbl'); if (l) l.textContent = 'Rest · extra time'; REST.iv = setInterval(tickRest, 250); }
   tickRest();
 });
+// Supersets share one rest: after a set of the first exercise, go straight to the partner; after the partner's set,
+// rest for the longer of the two rest times, then return to the first exercise.
+function supersetRest(i, j) {
+  const k = keyOf(selected), session = sessionFor(k), d = curDraft(); const ex = d?.exercises[i];
+  const p = ex?.superset, partner = p !== null && p !== undefined ? d.exercises[p] : null;
+  if (tab !== 'lift' || !partner || partner.skipped || ex.skipped) return false;
+  const restOf = x => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); return restSecs(row ? row[4] : '2 min'); };
+  const openSet = (x, after) => x.sets.findIndex((s, n) => n > after && !(num(s.r) > 0));
+  const target = (x, n) => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); const t = row && liftRec(x.name, row, session, k).targets[n]; return t ? (t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`) : ''; };
+  const [first, second] = i < p ? [ex, partner] : [partner, ex];
+  if (ex === first && j >= 0) {
+    const n = openSet(second, -1);
+    if (n < 0) return false; // partner already finished: rest as normal
+    startRest(0, ex.name, `Superset: go to ${second.name}, set ${n + 1}${target(second, n)}`);
+    const l = document.getElementById('rbLbl'); if (l) l.textContent = `Superset · no rest, go now`;
+    return true;
+  }
+  const n = openSet(first, -1);
+  const nx = d.exercises.slice(Math.max(i, p) + 1).find(x => !x.skipped);
+  const next = n >= 0 ? `Superset round ${n + 1}: ${first.name}, set ${n + 1}${target(first, n)}` : nx ? `Next exercise: ${nx.name}` : 'Last exercise done. Add notes and submit.';
+  startRest(Math.max(restOf(first), restOf(second)), `${first.name} + ${second.name}`, next);
+  return true;
+}
 function startRestFor(i, j) {
+  if (supersetRest(i, j)) return;
   const k = keyOf(selected), session = sessionFor(k), d = curDraft(); const ex = d?.exercises[i]; if (!ex) return;
   let secs = 45, label = ex.name;
   if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); secs = restSecs(p ? p[4] : '2 min'); }
@@ -1186,6 +1407,7 @@ function selectDate(d) {
   selected = d; openPicker = null;
   viewYear = d.getFullYear(); viewMonth = d.getMonth();
   if (tab === 'history' || tab === 'progress') tab = 'lift';
+  sessionStart = null; clearInterval(_clockIv);
   renderCalendar(); renderNow();
 }
 
@@ -1217,11 +1439,15 @@ function _doRender() {
 function dayHead(k, session) {
   const c = COLOR[session] || 'var(--fg3)';
   const opts = ['', ...SESSIONS, 'REST'].map(s => `<option value="${s}" ${s === (session || '') ? 'selected' : ''}>${s ? (s === 'REST' ? 'Rest' : s) : '—'}</option>`).join('');
+  const fi = fatigueLog[k];
+  const fatigueChip = fi?.done ? `<span class="sess-clock">⚡ Energy ${fi.energy}/5</span>` : '';
   return `<div class="dayhead">
     <h2>${fromKey(k).toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</h2>
     ${session ? `<span class="badge" style="background:color-mix(in srgb,${c} 20%,transparent);color:${c}">${session === 'REST' ? 'Rest' : session}</span>` : ''}
     <label class="sess"><span class="field-label">Session</span><select id="sessSel" data-act="session">${opts}</select></label>
     ${(tab === 'lift' || tab === 'core') && session && session !== 'REST' ? `<label class="switch go"><input type="checkbox" data-act="rest-auto" ${REST.auto ? 'checked' : ''}><span>Auto rest timer</span></label>` : ''}
+    ${fatigueChip}
+    <span class="sess-clock" id="sessClock" hidden></span>
   </div>`;
 }
 
@@ -1234,27 +1460,41 @@ function renderDay(type) {
   }
   if (session === 'REST') return dayHead(k, session) + `<div class="empty">Rest day. Walk, stretch, or do mobility work.<br>If you trained anyway, choose the session above.</div>`;
   const d = getDraft(type);
+  const checkinOpts = `<option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>`;
+  const checkinBanner = !fatigueLog[k]?.done ? `<div class="checkin-banner" id="checkinBanner">
+    <b>Quick check-in before you start</b>
+    <div class="checkin-row">
+      <label>Sleep quality <select data-cq="sleep">${checkinOpts}</select></label>
+      <label>Soreness (5 = very sore) <select data-cq="soreness">${checkinOpts}</select></label>
+      <label>Energy <select data-cq="energy">${checkinOpts}</select></label>
+      <button data-act="checkin-save">Save &amp; start</button>
+    </div>
+  </div>` : '';
   let body = '';
   if (type === 'lift') {
     const wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
+    const deloadBanner = isDeloadWeek(k) ? `<div class="phase deload"><b>⬇ Deload Week</b><span>Same weights as last week, about 40% fewer sets. Stop well short of failure and let your nervous system recover.</span></div>` : '';
     body = `<div class="phase ${cal ? 'calib' : ''}"><b>${cal ? `Calibration · Week ${wk} of ${CAL_WEEKS}` : `Double progression · Week ${wk}`}</b><span>${cal
       ? 'Find a weight that lands inside each rep bracket with about 2 reps left. Log every set. No rep-chasing yet.'
       : 'Keep the weight until every working set hits the top of the bracket, then add the smallest increment and drop back to the bottom.'}</span></div>`
-      + prBanner(d) + overloadPlan(d, session, k)
+      + deloadBanner + prBanner(d) + overloadPlan(d, session, k)
       + d.exercises.map((ex, i) => liftRow(ex, i, session, k)).join('');
   }
   if (type === 'core') body = d.exercises.map((ex, i) => coreRow(ex, i, session, k)).join('');
   if (type === 'cardio') body = cardioRow(d.exercises[0], session, k);
-  return dayHead(k, session) +
+  return dayHead(k, session) + checkinBanner +
     `<div class="colheads"><div>Plan · target today</div><div>What you did</div></div>` +
     body + submitBar(type, k, d);
 }
 
 function pickerHTML(type, i, ex) {
+  const session = sessionFor(keyOf(selected));
+  const swapKey = `${session}:${ex.planned}`;
+  const isRemembered = ex.name !== ex.planned && swapMemory[swapKey] === ex.name;
   // Pop is injected imperatively on click; never rendered inline to avoid full tab rebuilds
   return `<div class="picker">
     <button class="pick-btn" data-act="picker" data-i="${i}" aria-expanded="false" aria-haspopup="listbox"><span>${esc(ex.name)}</span><span class="caret">▾ swap</span></button>
-    ${ex.name !== ex.planned ? `<div class="swapped">Swapped from ${esc(ex.planned)}</div>` : ''}
+    ${ex.name !== ex.planned ? `<div class="swapped">${isRemembered ? 'Swapped (remembered)' : 'Swapped'} from ${esc(ex.planned)}</div>` : ''}
   </div>`;
 }
 function pickOptions(type, i, ex, q) {
@@ -1293,7 +1533,9 @@ function liftRow(ex, i, session, k) {
       <td><input id="lr-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="r" type="number" inputmode="numeric" min="0" placeholder="${t ? t.r : 'reps'}" value="${s.r ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} reps"></td>
       <td class="e1" id="le-${i}-${j}">${est || '–'}${prior && est > prior.v && !ex.skipped ? '<span class="pr">PR</span>' : ''}</td></tr>`;
   }).join('');
-  return `<div class="ex${ex.skipped ? ' skipped' : ''}" data-prior="${prior ? prior.v : ''}">
+  const targetW = rec.targets[0]?.w;
+  const warmupHTML = targetW >= 45 ? (() => { const wu = warmupSets(targetW); return wu.length ? `<div class="warmup"><div class="warmup-title">Warm-up guide</div><div class="warmup-sets">${wu.map(s => `<span>${s.pct} → ${s.w} lb × ${s.r}</span>`).join('')}</div></div>` : ''; })() : '';
+  return `<div class="ex${ex.skipped ? ' skipped' : ''}${ex.superset !== null && ex.superset !== undefined ? ' ss-linked' : ''}" data-prior="${prior ? prior.v : ''}">
     <div class="plan">
       <div class="ex-num">${String(i+1).padStart(2,'0')}</div>
       ${pickerHTML('lift', i, ex)}
@@ -1305,8 +1547,11 @@ function liftRow(ex, i, session, k) {
         <label class="switch"><input type="checkbox" data-act="skip" data-i="${i}" ${ex.skipped ? 'checked' : ''}><span>Skipped</span></label>
         <span class="pr" id="lpr-${i}" ${isPR ? '' : 'hidden'}>New PR${isPR ? ` · ${topNow}` : ''}</span>
         <button class="mini fill" data-act="fill" data-i="${i}" ${ex.skipped || rec.targets.every(t => t.w === null) ? 'disabled' : ''}>Fill targets</button>
+        <button class="mini" data-act="fill-last" data-i="${i}" ${ex.skipped || !rec.last ? 'disabled' : ''}>Last session</button>
+        <button class="mini" data-act="link-ss" data-i="${i}" title="Link as superset with next exercise">${ex.superset !== null && ex.superset !== undefined ? '🔗 Paired' : 'Superset'}</button>
       </div>
       <table class="sets"><thead><tr><th>Set</th><th>Weight (lb)</th><th>Reps</th><th class="e1">e1RM</th></tr></thead><tbody>${rows}</tbody></table>
+      ${warmupHTML}
       <div class="set-btns"><button class="mini" data-act="add" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>+ Set</button>${ex.sets.length > 1 ? `<button class="mini" data-act="rm" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>− Set</button>` : ''}</div>
     </div>
   </div>`;
@@ -1553,6 +1798,7 @@ main.addEventListener('input', e => {
     s[t.dataset.f] = num(t.value);
     if (tab === 'lift') { refreshPR(+t.dataset.i, ex); t.closest('tr').classList.toggle('done', num(s.r) > 0); }
     else t.closest('tr').classList.toggle('done', num(s.v) > 0);
+    startSessionClock();
     touch();
   } else if (act === 'cf') {
     const ex = curDraft().exercises[0]; const f = t.dataset.f;
@@ -1615,12 +1861,53 @@ main.addEventListener('click', async e => {
     return;
   }
   if (act === 'rest') { startRestFor(i, -1); return; }
-  if (act === 'pick') { const ex = curDraft().exercises[i]; ex.name = b.dataset.name; closePicker(); touch(); renderNow(); return; }
+  if (act === 'pick') {
+    const ex = curDraft().exercises[i]; ex.name = b.dataset.name;
+    const session = sessionFor(keyOf(selected));
+    if (session && ex.planned && ex.name !== ex.planned) {
+      swapMemory[`${session}:${ex.planned}`] = ex.name;
+      lsSet(LS.swaps, swapMemory);
+    }
+    closePicker(); touch(); renderNow(); return;
+  }
   if (act === 'fill') {
     const k = keyOf(selected), session = sessionFor(k), ex = curDraft().exercises[i];
     if (tab === 'lift') { const p = liftRows(session, k).find(r => r[0] === ex.planned); const rec = liftRec(ex.name, p, session, k); ex.sets = rec.targets.map(t => ({ w:t.w, r:t.r })); }
     else { const p = coreRows(session, k).find(r => r[0] === ex.planned); const rec = coreRec(ex.name, p, k); ex.sets = rec.targets.map(t => ({ v:t.v, w:t.w })); }
     touch(); renderNow(); return;
+  }
+  if (act === 'fill-last') {
+    const k = keyOf(selected), ex = curDraft().exercises[i];
+    const last = lastLift(ex.name, k);
+    if (last) { ex.sets = last.sets.map(s => ({ w:s.w, r:s.r })); touch(); renderNow(); }
+    return;
+  }
+  if (act === 'link-ss') {
+    const d = curDraft();
+    const ex = d.exercises[i];
+    if (ex.superset !== null && ex.superset !== undefined) {
+      const paired = ex.superset;
+      ex.superset = null;
+      if (d.exercises[paired]) d.exercises[paired].superset = null;
+    } else {
+      if (d.exercises[i + 1]) {
+        ex.superset = i + 1;
+        d.exercises[i + 1].superset = i;
+      }
+    }
+    saveDraftsSoon(); renderNow(); return;
+  }
+  if (act === 'checkin-save') {
+    const k = keyOf(selected);
+    const banner = document.getElementById('checkinBanner');
+    if (!banner) return;
+    const sleep = +banner.querySelector('[data-cq="sleep"]').value;
+    const soreness = +banner.querySelector('[data-cq="soreness"]').value;
+    const energy = +banner.querySelector('[data-cq="energy"]').value;
+    if (!sleep || !soreness || !energy) { alert('Please fill in all three fields.'); return; }
+    fatigueLog[k] = { sleep, soreness, energy, done:true };
+    lsSet(LS.fatigue, fatigueLog);
+    renderNow(); return;
   }
   if (act === 'add') { const ex = curDraft().exercises[i]; const last = ex.sets[ex.sets.length - 1] || {}; ex.sets.push(tab === 'lift' ? { w:last.w ?? null, r:null } : { v:null, w:last.w ?? null }); touch(); renderNow(); return; }
   if (act === 'rm') { curDraft().exercises[i].sets.pop(); touch(); renderNow(); return; }
@@ -2024,6 +2311,19 @@ function renderProgress() {
   const seg = `<div class="seg" role="group" aria-label="Range">${[['4w', '4 weeks'], ['12w', '12 weeks'], ['all', 'All']].map(([v, l]) => `<button data-act="p-range" data-v="${v}" aria-pressed="${pr.range === v}">${l}</button>`).join('')}</div>`;
   let h = `<div class="dayhead"><h2>Progress</h2><div class="head-ctrls">${seg}</div></div>`;
 
+  // Trend alerts
+  const alerts = trendAlerts();
+  if (alerts.length) {
+    h += `<div class="trend-alerts">${alerts.map(a => `<div class="trend-alert ${a.type}">${a.msg}</div>`).join('')}</div>`;
+  }
+
+  // Consistency
+  const sc = streakAndConsistency();
+  h += `<div class="card tiles"><div class="kv">
+    ${tile('Streak', sc.streak ? `${sc.streak}🔥` : '0', 'consecutive sessions')}
+    ${tile('4-week hit rate', sc.pct !== null ? `${sc.pct}%` : '—', `${sc.completed}/${sc.scheduled} sessions`)}
+  </div></div>`;
+
   // Body
   const all = bodyEntries(), list = all.filter(e => e.date >= lo);
   const first = all[0], last = all[all.length - 1];
@@ -2349,6 +2649,14 @@ async function submit() {
     status[id] = { cls:'dirty', text:'Saved on this device. Will sync when storage connects.' };
   } else delete status[id];
   renderCalendar(); renderNow();
+  if (tab === 'lift') {
+    const sumEl = document.createElement('div');
+    sumEl.innerHTML = sessionSummaryHTML(workouts[id], tab, k);
+    document.body.appendChild(sumEl);
+  }
+  if (tab === 'lift' || tab === 'core') {
+    showNutriToast('post');
+  }
 }
 
 // ── Drive sync status + backup ──
