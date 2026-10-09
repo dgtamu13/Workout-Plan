@@ -389,6 +389,12 @@ svg.e-dark, svg.e-light { flex:none; }
   .cal-toggle[aria-expanded="true"] { color:var(--accent); border-color:var(--accent); }
 }
 
+/* Drive sync */
+#syncBtn[data-state="ok"] { color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,transparent); }
+#syncBtn[data-state="syncing"] { color:var(--accent); }
+#syncBtn[data-state="needs-auth"], #syncBtn[data-state="offline"] { color:var(--yellow); border-color:color-mix(in srgb,var(--yellow) 45%,transparent); }
+#syncBtn[data-state="error"] { color:var(--red); border-color:color-mix(in srgb,var(--red) 45%,transparent); }
+
 /* Rest timer */
 .restbar { position:fixed; left:0; right:0; bottom:0; z-index:60; background:var(--surf); border-top:2px solid var(--accent); box-shadow:0 -8px 24px -10px var(--glow); padding-inline:16px; padding-block:10px calc(10px + env(safe-area-inset-bottom, 0px)); }
 .rb { max-width:980px; margin:0 auto; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px 14px; }
@@ -474,6 +480,7 @@ body.resting .main { padding-bottom:120px; }
     <div class="cal-top">
       <div class="brand"><svg class="emblem e-dark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="24" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(0 24 24)"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(60 24 24)"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(120 24 24)"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(180 24 24)"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(240 24 24)"/><rect x="22" y="5" width="4" height="11" fill="currentColor" transform="rotate(300 24 24)"/></svg><svg class="emblem e-light" viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" d="M24 2 L26.6 30 L24 46 L21.4 30 Z"/><path fill="currentColor" d="M16 4 C4 9 0 24 6 36 L9 34 L9.5 41 L13 37.5 L15.5 45 L19 38 C10 32 8 17 16 4 Z"/><path fill="currentColor" d="M32 4 C44 9 48 24 42 36 L39 34 L38.5 41 L35 37.5 L32.5 45 L29 38 C38 32 40 17 32 4 Z"/></svg><div><h1><span class="t-dark">Imperial Training Command</span><span class="t-light">Rebel Training Command</span></h1><div class="brand-sub"><span class="t-dark">Operative Derek · Lean bulk campaign</span><span class="t-light">Commander Derek · Lean bulk campaign</span></div></div></div>
       <div class="top-ctrls">
+      <button class="today-btn" id="syncBtn" type="button" data-state="off">Sync</button>
       <div class="side-switch" role="group" aria-label="Theme">
         <button type="button" data-side="dark" aria-pressed="false"><i class="saber sith" aria-hidden="true"></i>Dark Side</button>
         <button type="button" data-side="light" aria-pressed="false"><i class="saber jedi" aria-hidden="true"></i>Light Side</button>
@@ -515,6 +522,7 @@ body.resting .main { padding-bottom:120px; }
 <div class="restbar" id="restBar" hidden></div>
 
 <script src="vendor/chart.umd.js"></script>
+<script src="drive-sync.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
 const START = new Date(2026, 9, 8);
@@ -1283,6 +1291,7 @@ function renderHistory() {
       </div>
     </details>`).join('');
   return `<div class="dayhead"><h2>Workout history</h2></div>
+    ${syncCard()}
     <div class="filters">
       <label><span class="field-label">Type</span><select id="hfType" data-act="hf" data-f="type">
         ${[['all','All'],['lift','Lifting'],['core','Core'],['cardio','Cardio']].map(([v,l]) => `<option value="${v}" ${hf.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1446,6 +1455,11 @@ main.addEventListener('click', async e => {
     renderCalendar(); renderNow(); return;
   }
   if (act === 'copy') { const ta = document.getElementById('csvText'); try { await navigator.clipboard.writeText(ta.value); b.textContent = 'Copied'; } catch { ta.focus(); ta.select(); } return; }
+  if (act === 'sync-on') { DriveDB.connect(); return; }
+  if (act === 'sync-now') { DriveDB.syncNow(); return; }
+  if (act === 'sync-off') { DriveDB.disconnect(); renderNow(); return; }
+  if (act === 'bk-export') { downloadText(`training-calendar-backup-${keyOf(new Date())}.json`, DriveDB.exportJSON(), 'application/json'); return; }
+  if (act === 'bk-import') { document.getElementById('bkFile').click(); return; }
   if (act === 'closecsv') { csvFallback = null; renderNow(); return; }
 });
 function refreshHistoryList() {
@@ -1712,7 +1726,7 @@ function addFoodHTML() {
 function renderMeals() {
   const k = keyOf(selected);
   const head = `<div class="dayhead"><h2>${fromKey(k).toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</h2>`;
-  if (!plan || !Object.keys(foods).length) return head + `</div><div class="empty">${syncMode === 'local' ? 'The meal plan is kept in this page\'s storage, which this view cannot reach.' : 'Loading your meal plan…'}</div>`;
+  if (!plan || !Object.keys(foods).length) return head + `</div><div class="empty">${syncMode === 'local' ? 'Your meal plan is not on this device yet. Open History → Data &amp; sync and import your backup, or connect Google Drive.' : 'Loading your meal plan…'}</div>`;
   const d = getMealDraft(k);
   const menus = Object.keys(plan.menus).sort();
   return head + `<div class="head-ctrls">
@@ -2147,12 +2161,54 @@ async function submit() {
   renderCalendar(); renderNow();
 }
 
+// ── Drive sync status + backup ──
+const SYNC_LABEL = { off:'Sync', syncing:'Syncing…', ok:'Synced', 'needs-auth':'Reconnect', offline:'Offline', error:'Sync error' };
+let _lastSyncSt = null;
+function onSyncState() {
+  const st = window.DriveDB ? DriveDB.state() : 'off';
+  if (st === _lastSyncSt) return;
+  _lastSyncSt = st;
+  syncMode = st === 'ok' ? 'cloud' : 'local';
+  const b = document.getElementById('syncBtn');
+  if (b) { b.dataset.state = st; b.textContent = '☁ ' + SYNC_LABEL[st]; }
+  if (st !== 'syncing') afterSnap();
+}
+function syncCard() {
+  if (!window.DriveDB || window.claude?.use) return '';
+  const st = DriveDB.state(), ls = DriveDB.lastSync();
+  const msg = st === 'ok' ? `Synced with Google Drive${ls ? ' · ' + new Date(ls).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : ''}`
+    : st === 'syncing' ? 'Syncing…' : st === 'needs-auth' ? 'Google sign-in needed to resume syncing.'
+    : st === 'offline' ? 'Offline. Changes are saved on this device and sync later.' : st === 'error' ? 'Last sync failed. Saved on this device.'
+    : 'Not connected. Data is saved on this device only.';
+  return `<div class="card"><h3>Data &amp; sync</h3><div class="submit-row" style="margin-bottom:10px"><span class="note">${esc(msg)}</span></div>
+    <div class="export-row" style="margin:0">
+      ${DriveDB.linked() && st !== 'needs-auth' ? `<button class="mini" data-act="sync-now">Sync now</button><button class="mini" data-act="sync-off">Disconnect</button>` : `<button class="primary" data-act="sync-on" style="margin-left:0">Connect Google Drive</button>`}
+      <button class="mini" data-act="bk-export">Export backup</button><button class="mini" data-act="bk-import">Import backup</button>
+      <input type="file" id="bkFile" accept="application/json,.json" hidden>
+    </div></div>`;
+}
+function downloadText(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement('a'), { href:url, download:name });
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('#syncBtn') && window.DriveDB) { DriveDB.linked() && DriveDB.state() !== 'needs-auth' ? DriveDB.syncNow() : DriveDB.connect(); }
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'bkFile' || !e.target.files[0]) return;
+  try { const n = DriveDB.importJSON(await e.target.files[0].text()); alert(`Imported ${n} records.`); }
+  catch (err) { alert('Could not import: ' + err.message); }
+  e.target.value = '';
+});
+
 async function connect() {
   const use = n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
   use('downloads').then(d => { downloads = d; });
   db = await use('db');
-  if (!db) { syncMode = 'local'; render(); return; }
-  syncMode = 'cloud';
+  if (!db && window.DriveDB) { db = DriveDB.create(); DriveDB.onState(onSyncState); onSyncState(); }
+  else if (!db) { syncMode = 'local'; render(); return; }
+  else syncMode = 'cloud';
   subscribeNew();
   let first = true;
   db.collection('workouts').onSnapshot(snap => {
