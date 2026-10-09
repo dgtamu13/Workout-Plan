@@ -1459,6 +1459,13 @@ main.addEventListener('click', async e => {
   if (act === 'sync-now') { DriveDB.syncNow(); return; }
   if (act === 'sync-off') { DriveDB.disconnect(); renderNow(); return; }
   if (act === 'bk-export') { downloadText(`training-calendar-backup-${keyOf(new Date())}.json`, DriveDB.exportJSON(), 'application/json'); return; }
+  if (act === 'bk-paste') { bkPasteOpen = true; renderNow(); document.getElementById('bkText')?.focus(); return; }
+  if (act === 'bk-paste-close') { bkPasteOpen = false; renderNow(); return; }
+  if (act === 'bk-paste-go') {
+    try { const n = DriveDB.importJSON(document.getElementById('bkText').value.trim()); bkPasteOpen = false; renderNow(); alert(`Imported ${n} records.`); }
+    catch (err) { alert('Could not import: ' + err.message); }
+    return;
+  }
   if (act === 'bk-import') { document.getElementById('bkFile').click(); return; }
   if (act === 'closecsv') { csvFallback = null; renderNow(); return; }
 });
@@ -2173,6 +2180,7 @@ function onSyncState() {
   if (b) { b.dataset.state = st; b.textContent = '☁ ' + SYNC_LABEL[st]; }
   if (st !== 'syncing') afterSnap();
 }
+let bkPasteOpen = false;
 function syncCard() {
   if (!window.DriveDB || window.claude?.use) return '';
   const st = DriveDB.state(), ls = DriveDB.lastSync();
@@ -2183,9 +2191,9 @@ function syncCard() {
   return `<div class="card"><h3>Data &amp; sync</h3><div class="submit-row" style="margin-bottom:10px"><span class="note">${esc(msg)}</span></div>
     <div class="export-row" style="margin:0">
       ${DriveDB.linked() && st !== 'needs-auth' ? `<button class="mini" data-act="sync-now">Sync now</button><button class="mini" data-act="sync-off">Disconnect</button>` : `<button class="primary" data-act="sync-on" style="margin-left:0">Connect Google Drive</button>`}
-      <button class="mini" data-act="bk-export">Export backup</button><button class="mini" data-act="bk-import">Import backup</button>
+      <button class="mini" data-act="bk-export">Export backup</button><button class="mini" data-act="bk-import">Import backup file</button><button class="mini" data-act="bk-paste">Paste backup text</button>
       <input type="file" id="bkFile" accept="application/json,.json" hidden>
-    </div></div>`;
+    </div>${bkPasteOpen ? `<textarea id="bkText" placeholder="Paste the backup text here" style="width:100%;min-height:120px;margin-top:10px;font-family:var(--mono);font-size:.72rem"></textarea><div class="export-row" style="margin:8px 0 0"><button class="primary" data-act="bk-paste-go" style="margin-left:0">Import</button><button class="mini" data-act="bk-paste-close">Cancel</button></div>` : ''}</div>`;
 }
 function downloadText(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
