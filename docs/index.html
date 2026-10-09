@@ -545,12 +545,12 @@ body.resting .main { padding-bottom:120px; }
 
 <div class="tabbar">
   <div class="wrap" role="tablist">
+    <button class="tab" role="tab" data-tab="progress">Progress</button>
     <button class="tab" role="tab" data-tab="lift">Lifting</button>
     <button class="tab" role="tab" data-tab="core">Core</button>
     <button class="tab" role="tab" data-tab="cardio">Cardio</button>
     <button class="tab" role="tab" data-tab="body">Body</button>
     <button class="tab" role="tab" data-tab="meals">Meals</button>
-    <button class="tab" role="tab" data-tab="progress">Progress</button>
     <button class="tab" role="tab" data-tab="history">History</button>
     <span class="tab-date" id="tabDate"></span>
   </div>
@@ -757,6 +757,27 @@ function programInfo(k) {
   const phase = PHASES.find(ph => week >= ph.from && week <= ph.to);
   return { status:'active', week, day:(d % 7) + 1, session:CYCLE[d % 7], phase, deload:week === phase.deload };
 }
+// ═══ Progress ranges ═══
+// range: 'mtd' | 'ytd' | 'm:YYYY-MM' (that month through today) | 'y:YYYY' (that whole calendar year)
+function rangeBounds(range, today) {
+  const y = today.slice(0, 4), mtd = { lo:today.slice(0, 7) + '-01', hi:today };
+  if (range === 'ytd') return { lo:`${y}-01-01`, hi:today };
+  if (/^m:\d{4}-\d{2}$/.test(range || '')) { const lo = range.slice(2) + '-01'; return lo <= today ? { lo, hi:today } : mtd; }
+  if (/^y:\d{4}$/.test(range || '')) { const yy = range.slice(2); return yy <= y ? { lo:`${yy}-01-01`, hi:`${yy}-12-31` < today ? `${yy}-12-31` : today } : mtd; }
+  return mtd;
+}
+// Months from the first day with data through the current month (newest first), and earlier years that have data.
+function rangeOptions(dates, today) {
+  const first = dates.filter(Boolean).sort()[0], cy = +today.slice(0, 4), cm = +today.slice(5, 7);
+  let y = first ? +first.slice(0, 4) : cy, m = first ? +first.slice(5, 7) : cm;
+  const months = [];
+  while (y < cy || (y === cy && m <= cm)) {
+    months.unshift({ value:`m:${y}-${String(m).padStart(2, '0')}`, label:new Date(y, m - 1, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' }) });
+    if (++m > 12) { m = 1; y++; }
+  }
+  const years = [...new Set(dates.filter(Boolean).map(d => +d.slice(0, 4)))].filter(v => v < cy).sort((a, b) => b - a).map(v => ({ value:`y:${v}`, label:String(v) }));
+  return { months, years };
+}
 const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
 function plannedSession(date) {
   return programInfo(keyOf(new Date(date.getFullYear(), date.getMonth(), date.getDate()))).session;
@@ -776,7 +797,7 @@ const fmtW = w => (w === null || w === undefined) ? '—' : (w === 0 ? 'BW' : St
 
 // ═══ State ══════════════════════════════════════════════════════════
 let viewYear, viewMonth, selected;
-let tab = 'lift';
+let tab = 'progress';
 let workouts = {};     // id -> submitted doc  (id = date_type)
 let drafts = {};       // id -> unsubmitted working copy
 let sessOverride = {}; // dateKey -> session
@@ -798,7 +819,6 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
 swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {});
-{ const t = lsGet(LS.t, null); if (['lift','core','cardio','body','meals','progress','history'].includes(t)) tab = t; }
 if (['#lift','#core','#cardio','#body','#meals','#progress','#history'].includes(location.hash)) tab = location.hash.slice(1);
 
 let draftTimer = null;
@@ -1967,7 +1987,7 @@ document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () =>
 const LS2 = { body:'derek-tc-body-v1', meals:'derek-tc-meals-v1', foods:'derek-tc-foods-v1', plan:'derek-tc-plan-v1' };
 let bodyLog = lsGet(LS2.body, {}), mealLog = lsGet(LS2.meals, {}), foods = lsGet(LS2.foods, {}), plan = lsGet(LS2.plan, null);
 let charts = [], chartQueue = [];
-let pr = { range:'12w', ex:'' };
+let pr = { range:'mtd', ex:'' };
 let newFood = { name:'', kcal:'', p:'', f:'', c:'', msg:'' };
 const openDetails = new Set();
 const SLOTS = ['Breakfast','Lunch','Snack','Dinner'];
@@ -2273,7 +2293,13 @@ async function submitMeals() {
 }
 
 // ── Progress ──
-function rangeStart() { const t = todayKey(); return pr.range === '4w' ? addDays(t, -27) : pr.range === '12w' ? addDays(t, -83) : '2000-01-01'; }
+function dataDates() { return [...Object.values(workouts).map(w => w.date), ...bodyEntries().map(e => e.date), ...Object.keys(mealLog)]; }
+function rangeControls() {
+  const { months, years } = rangeOptions(dataDates(), todayKey()), r = pr.range;
+  const btn = (v, l) => `<button data-act="p-range" data-v="${v}" aria-pressed="${r === v}">${l}</button>`;
+  const sel = (label, opts) => `<label class="sess" style="margin-left:0"><span class="field-label">${label}</span><select data-act="p-range-sel" aria-label="${label}"><option value="">—</option>${opts.map(o => `<option value="${o.value}" ${r === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}</select></label>`;
+  return `<div class="seg" role="group" aria-label="Range">${btn('mtd', 'Month to date')}${btn('ytd', 'Year to date')}</div>${sel('Month', months)}${years.length ? sel('Year', years) : ''}`;
+}
 function dayRange(a, b) { const out = []; for (let d = a; d <= b; d = addDays(d, 1)) out.push(d); return out; }
 function weekRange(a, b) { const out = []; for (let d = mondayOf(a); d <= b; d = addDays(d, 7)) out.push(d); return out; }
 function theme() {
@@ -2294,9 +2320,9 @@ function chartCard(id, title, sub, ok, emptyMsg, fn) {
 const tile = (label, v, sub = '', cls = '') => `<div><div class="field-label">${label}</div><div class="v">${v}</div>${sub ? `<div class="s ${cls}">${sub}</div>` : ''}</div>`;
 const trendCls = (v, goodUp = true) => v === null || Math.abs(v) < 0.05 ? 'flat' : (v > 0) === goodUp ? 'up' : 'down';
 
-function liftSeries(lo) {
+function liftSeries(lo, hi = '9999-12-31') {
   const m = {};
-  Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo).sort((a, b) => a.date.localeCompare(b.date)).forEach(w => w.exercises.forEach(e => {
+  Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo && w.date <= hi).sort((a, b) => a.date.localeCompare(b.date)).forEach(w => w.exercises.forEach(e => {
     if (e.skipped) return;
     let best = null;
     e.sets.forEach(s => { const v = e1rm(num(s.w), num(s.r)); if (v && (!best || v > best.v)) best = { v, w:num(s.w), r:num(s.r) }; });
@@ -2307,9 +2333,9 @@ function liftSeries(lo) {
 const KEY_LIFTS = ['Barbell Bench Press','Back Squat','Conventional Deadlift','Standing OHP','Weighted Pull-Ups','Front Squat','Romanian Deadlift','Barbell Bent-Over Row','Incline DB Press'];
 
 function renderProgress() {
-  const lo = rangeStart(), today = todayKey();
-  const seg = `<div class="seg" role="group" aria-label="Range">${[['4w', '4 weeks'], ['12w', '12 weeks'], ['all', 'All']].map(([v, l]) => `<button data-act="p-range" data-v="${v}" aria-pressed="${pr.range === v}">${l}</button>`).join('')}</div>`;
-  let h = `<div class="dayhead"><h2>Progress</h2><div class="head-ctrls">${seg}</div></div>`;
+  const { lo, hi } = rangeBounds(pr.range, todayKey()), today = hi; // `today` below means the last day of the selected range
+  let h = `<div class="dayhead"><h2>Progress</h2><div class="head-ctrls">${rangeControls()}</div></div>`;
+  h += `<div class="note" style="margin:-6px 0 12px">${longDate(lo)} to ${longDate(hi)}</div>`;
 
   // Trend alerts
   const alerts = trendAlerts();
@@ -2325,17 +2351,17 @@ function renderProgress() {
   </div></div>`;
 
   // Body
-  const all = bodyEntries(), list = all.filter(e => e.date >= lo);
-  const first = all[0], last = all[all.length - 1];
+  const all = bodyEntries().filter(e => e.date <= hi), list = all.filter(e => e.date >= lo);
+  const last = all[all.length - 1], first = list[0] || last;
   h += `<div class="sec-title" style="--sc:var(--accent)">Body composition</div>`;
   if (last) {
     const a7 = avg7(all, today), a7p = avg7(all, addDays(today, -7)), sl = slope(all, today, 21, 'weight', 4, 7);
-    const fl = all.find(e => leanOf(e)), ll = [...all].reverse().find(e => leanOf(e));
-    const fw = all.find(e => num(e.waist) > 0), lw = [...all].reverse().find(e => num(e.waist) > 0);
+    const fl = list.find(e => leanOf(e)), ll = [...all].reverse().find(e => leanOf(e));
+    const fw = list.find(e => num(e.waist) > 0), lw = [...all].reverse().find(e => num(e.waist) > 0);
     h += `<div class="card tiles"><div class="kv">
       ${tile('7-day avg', a7 ? `${r1(a7)} lb` : '—', a7 && a7p ? `${sgn(a7 - a7p)} lb vs last week` : '', 'flat')}
       ${tile('Trend', sl ? `${sgn(sl.perWeek, 2)} lb/wk` : '—', `target +${plan?.rateTarget ?? 0.25}`, sl ? (sl.perWeek >= (plan?.rateBand?.[0] ?? 0.1) && sl.perWeek <= (plan?.rateBand?.[1] ?? 0.5) ? 'up' : 'down') : 'flat')}
-      ${tile('Weight', `${last.weight ?? '—'} lb`, first && num(first.weight) && num(last.weight) ? `${sgn(last.weight - first.weight)} since ${shortDate(first.date)}` : '', 'flat')}
+      ${tile('Weight', `${last.weight ?? '—'} lb`, first !== last && num(first.weight) && num(last.weight) ? `${sgn(last.weight - first.weight)} since ${shortDate(first.date)}` : '', 'flat')}
       ${tile('Lean mass', ll ? `${r1(leanOf(ll))} lb` : '—', fl && ll && fl !== ll ? `${sgn(leanOf(ll) - leanOf(fl))} since ${shortDate(fl.date)}` : '', trendCls(fl && ll ? leanOf(ll) - leanOf(fl) : null))}
       ${tile('Fat mass', ll ? `${r1(fatOf(ll))} lb` : '—', fl && ll && fl !== ll ? `${sgn(fatOf(ll) - fatOf(fl))} since ${shortDate(fl.date)}` : '', trendCls(fl && ll ? fatOf(ll) - fatOf(fl) : null, false))}
       ${tile('Waist', lw ? `${lw.waist} in` : '—', fw && lw && fw !== lw ? `${sgn(lw.waist - fw.waist, 2)} since ${shortDate(fw.date)}` : 'not logged yet', trendCls(fw && lw && fw !== lw ? lw.waist - fw.waist : null, false))}
@@ -2368,9 +2394,9 @@ function renderProgress() {
   h += `</div>`;
 
   // Lifting
-  const ls = liftSeries(lo), names = Object.keys(ls).sort((a, b) => ls[b].length - ls[a].length || a.localeCompare(b));
+  const ls = liftSeries(lo, hi), names = Object.keys(ls).sort((a, b) => ls[b].length - ls[a].length || a.localeCompare(b));
   if (!ls[pr.ex]) pr.ex = KEY_LIFTS.find(n => ls[n]) || names[0] || '';
-  const lifts = Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo);
+  const lifts = Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo && w.date <= hi);
   h += `<div class="sec-title" style="--sc:var(--push)">Lifting</div>`;
   const keyTiles = KEY_LIFTS.filter(n => ls[n]).slice(0, 5).map(n => { const s = ls[n], a = s[0], b = s[s.length - 1]; return tile(n.replace('Barbell ', '').replace('Conventional ', ''), `${b.v} lb`, s.length > 1 ? `${sgn(b.v - a.v, 0)} lb e1RM` : `e1RM · ${shortDate(b.date)}`, trendCls(s.length > 1 ? b.v - a.v : null)); }).join('');
   const vol = lifts.reduce((a, w) => a + w.exercises.reduce((b, e) => b + (e.skipped ? 0 : e.sets.reduce((c, s) => c + (num(s.w) || 0) * (num(s.r) || 0), 0)), 0), 0);
@@ -2394,7 +2420,7 @@ function renderProgress() {
   h += muscleSection(lo, today) + prBoard();
 
   // Cardio
-  const cardio = Object.values(workouts).filter(w => w.type === 'cardio' && w.date >= lo && w.exercises[0] && !w.exercises[0].skipped && num(w.exercises[0].duration) > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const cardio = Object.values(workouts).filter(w => w.type === 'cardio' && w.date >= lo && w.date <= hi && w.exercises[0] && !w.exercises[0].skipped && num(w.exercises[0].duration) > 0).sort((a, b) => a.date.localeCompare(b.date));
   const z2 = cardio.filter(w => w.exercises[0].planned === 'Zone 2'), hiit = cardio.filter(w => w.exercises[0].planned === 'HIIT');
   const z2in = z2.filter(w => num(w.exercises[0].hr) >= Z2[0] && num(w.exercises[0].hr) <= Z2[1]).length;
   const mins = cardio.reduce((a, w) => a + num(w.exercises[0].duration), 0);
@@ -2414,15 +2440,15 @@ function renderProgress() {
       { label:'Zone 2', data:weeksC.map(wk => z2.filter(w => mondayOf(w.date) === wk).reduce((a, w) => a + num(w.exercises[0].duration), 0)), backgroundColor:t.pull },
       { label:'HIIT', data:weeksC.map(wk => hiit.filter(w => mondayOf(w.date) === wk).reduce((a, w) => a + num(w.exercises[0].duration), 0)), backgroundColor:t.red },
     ] }, options:copts(t, { stacked:true }) }));
-  h += chartCard('chHiit', 'HIIT rounds', '30 sec on / 90 sec easy, +1 round per session to a cap of 16', hiit.some(w => num(w.exercises[0].rounds)), 'Log rounds on a HIIT day.', t => ({
+  h += chartCard('chHiit', 'HIIT rounds', '+1 round per session, up to the cap for the current phase (10, or 12 on Push A in phases 2 and 3)', hiit.some(w => num(w.exercises[0].rounds)), 'Log rounds on a HIIT day.', t => ({
     type:'line', data:{ labels:hiit.map(w => shortDate(w.date)), datasets:[
       { label:'Rounds', data:hiit.map(w => num(w.exercises[0].rounds)), borderColor:t.red, backgroundColor:t.red, pointRadius:4, stepped:true },
-      { label:'Cap', data:hiit.map(() => 16), borderColor:t.fg3, borderDash:[4, 4], pointRadius:0, borderWidth:1 },
-    ] }, options:copts(t, { y:{ suggestedMin:8, suggestedMax:17 } }) }));
+      { label:'Cap', data:hiit.map(w => cardioPlan(w.session, w.date)?.maxRounds ?? 10), borderColor:t.fg3, borderDash:[4, 4], pointRadius:0, borderWidth:1 },
+    ] }, options:copts(t, { y:{ suggestedMin:4, suggestedMax:13 } }) }));
   h += `</div>`;
 
   // Core
-  const core = Object.values(workouts).filter(w => w.type === 'core' && w.date >= lo).sort((a, b) => a.date.localeCompare(b.date));
+  const core = Object.values(workouts).filter(w => w.type === 'core' && w.date >= lo && w.date <= hi).sort((a, b) => a.date.localeCompare(b.date));
   const cs = w => { let reps = 0, sec = 0, sets = 0; w.exercises.forEach(e => { if (e.skipped) return; e.sets.forEach(s => { const v = num(s.v); if (!v) return; sets++; if (e.unit === 'sec') sec += v; else if (e.unit === 'reps') reps += v; }); }); return { reps, sec, sets }; };
   const ct = core.reduce((a, w) => { const s = cs(w); a.reps += s.reps; a.sec += s.sec; a.sets += s.sets; return a; }, { reps:0, sec:0, sets:0 });
   h += `<div class="sec-title" style="--sc:var(--pull)">Core</div>`;
@@ -2437,7 +2463,7 @@ function renderProgress() {
   h += `</div>`;
 
   // Nutrition
-  const md = Object.values(mealLog).filter(m => m.date >= lo).sort((a, b) => a.date.localeCompare(b.date)).map(m => {
+  const md = Object.values(mealLog).filter(m => m.date >= lo && m.date <= hi).sort((a, b) => a.date.localeCompare(b.date)).map(m => {
     const t = Object.keys(foods).length ? sumMac(m.items || [], it => it.on) : m.totals;
     return { date:m.date, kcal:Math.round(t.kcal), p:Math.round(t.p), tk:m.target?.kcal ?? plan?.targets?.[m.dayType]?.kcal, tp:m.target?.p ?? plan?.targets?.[m.dayType]?.p };
   });
@@ -2481,7 +2507,7 @@ function muscleSection(lo, today) {
     <div class="card"><div class="wk-nav"><button class="nav-btn" data-act="p-wk" data-v="-1" aria-label="Previous week">&#8249;</button><span class="lbl">${shortDate(wk)} – ${shortDate(addDays(wk, 6))}${isNow ? ' · this week' : ''}</span><button class="nav-btn" data-act="p-wk" data-v="1" aria-label="Next week" ${isNow ? 'disabled' : ''}>&#8250;</button></div>
     ${any || Object.keys(last).length ? `<div class="htable-wrap"><table class="htable mtable"><thead><tr><th>Muscle</th><th>Sets</th><th>10–20 set band</th><th>Reps</th><th>Volume lb</th><th>vs prior wk</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="note" style="margin:10px 0 0;line-height:1.5">Working sets with reps logged. A lift counts 1 set for its main muscle and ½ for the helper (bench → chest 1, triceps ½). Volume is weight × reps on the main muscle. Most lifters grow well on 10–20 hard sets per muscle per week.</p>` : `<div class="chart-empty" style="height:120px">No working sets logged this week yet.</div>`}</div>`;
-  const lifts = Object.values(workouts).filter(w => (w.type === 'lift' || w.type === 'core') && w.date >= lo);
+  const lifts = Object.values(workouts).filter(w => (w.type === 'lift' || w.type === 'core') && w.date >= lo && w.date <= today);
   const weeks = lifts.length ? weekRange(lifts.map(w => w.date).sort()[0], today) : [];
   const per = weeks.map(muscleWeek);
   const used = MUSCLES.filter(g => per.some(m => m[g]?.sets));
@@ -2502,8 +2528,8 @@ function prBoard() {
 }
 function updateE1RMChart() {
   if (!window.Chart) return;
-  const lo = rangeStart();
-  const ls = liftSeries(lo);
+  const { lo, hi } = rangeBounds(pr.range, todayKey());
+  const ls = liftSeries(lo, hi);
   const sel = ls[pr.ex] || [];
   const c = charts.find(ch => ch.canvas?.id === 'chE1');
   if (!c) return; // chart not yet created — fall back to full render
@@ -2545,6 +2571,7 @@ main.addEventListener('change', e => {
   if (act === 'm-on') { const d = getMealDraft(k); d.items[+t.dataset.i].on = t.checked; t.closest('.food-row')?.classList.toggle('off', !t.checked); refreshMealNums(d); touch2('meals'); }
   else if (act === 'm-menu') { const d = getMealDraft(k); drafts[`${k}_meals`] = buildMealDraft(k, d.dayType, t.value, { ...d, userSet:true }); touch2('meals'); renderNow(); }
   else if (act === 'p-ex') { pr.ex = t.value; updateE1RMChart(); }
+  else if (act === 'p-range-sel') { pr.range = t.value || 'mtd'; pr.wk = undefined; renderNow(); }
 });
 main.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -2590,7 +2617,7 @@ main.addEventListener('click', async e => {
     if (db) { try { await db.collection('foods').doc(id).set(doc); } catch { newFood.msg = `Saved ${name} on this device only.`; } }
     renderNow(); return;
   }
-  if (act === 'p-range') { pr.range = b.dataset.v; renderNow(); return; }
+  if (act === 'p-range') { pr.range = b.dataset.v; pr.wk = undefined; renderNow(); return; }
   if (act === 'b-range') { bodyRange = +b.dataset.v; renderNow(); return; }
   if (act === 'p-wk') { pr.wk = addDays(pr.wk || mondayOf(todayKey()), 7 * +b.dataset.v); renderNow(); return; }
 });

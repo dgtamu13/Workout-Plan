@@ -284,6 +284,42 @@ check('A low-readiness session is ignored when setting the next targets', () => 
   run('fatigueLog = {}');
 });
 
+console.log('Progress ranges');
+const RB = (r, t) => run(`rangeBounds(${J(r)}, ${J(t)})`);
+const RO = (d, t) => run(`rangeOptions(${J(d)}, ${J(t)})`);
+check('Month to date and year to date run from the 1st to today', () => {
+  assert.deepStrictEqual(RB('mtd', '2026-10-09'), { lo: '2026-10-01', hi: '2026-10-09' });
+  assert.deepStrictEqual(RB('ytd', '2027-03-15'), { lo: '2027-01-01', hi: '2027-03-15' });
+});
+check('A chosen month runs from its 1st to today ("since then")', () => {
+  assert.deepStrictEqual(RB('m:2026-09', '2026-10-09'), { lo: '2026-09-01', hi: '2026-10-09' });
+  assert.deepStrictEqual(RB('m:2026-10', '2026-10-09'), { lo: '2026-10-01', hi: '2026-10-09' });
+});
+check('A previous year is that whole calendar year', () => {
+  assert.deepStrictEqual(RB('y:2026', '2027-03-15'), { lo: '2026-01-01', hi: '2026-12-31' });
+  assert.deepStrictEqual(RB('y:2027', '2027-03-15'), { lo: '2027-01-01', hi: '2027-03-15' });
+});
+check('Bad or future ranges fall back to month to date', () => {
+  for (const r of ['', undefined, 'junk', '4w', 'm:2099-01', 'y:2099']) assert.deepStrictEqual(RB(r, '2026-10-09'), { lo: '2026-10-01', hi: '2026-10-09' }, String(r));
+});
+check('Month list: every month from the first data through now, newest first', () => {
+  const o = RO(['2026-09-26', '2026-10-03'], '2026-10-09');
+  assert.deepStrictEqual(o.months.map(m => m.label), ['October 2026', 'September 2026']);
+  assert.deepStrictEqual(o.months.map(m => m.value), ['m:2026-10', 'm:2026-09']);
+  assert.deepStrictEqual(o.years, []);
+  const p = RO(['2026-11-20'], '2027-02-03');
+  assert.deepStrictEqual(p.months.map(m => m.label), ['February 2027', 'January 2027', 'December 2026', 'November 2026']);
+});
+check('Year list: only earlier years that have data', () => {
+  const o = RO(['2025-02-01', '2026-10-03', '2027-01-04'], '2027-03-01');
+  assert.deepStrictEqual(o.years, [{ value: 'y:2026', label: '2026' }, { value: 'y:2025', label: '2025' }]);
+  assert.deepStrictEqual(RO([], '2026-10-09').months.map(m => m.label), ['October 2026']);
+});
+check('Progress is the first tab and the default on open', () => {
+  assert.ok(html.indexOf('data-tab="progress"') < html.indexOf('data-tab="lift"'));
+  assert.ok(/\nlet tab = 'progress';/.test(html));
+});
+
 console.log('Milestones');
 check('Milestone table matches the plan', () => {
   assert.deepStrictEqual(run('MILESTONES').map(m => [m['Barbell Bench Press'], m['Back Squat'], m['Conventional Deadlift'], m['Standing OHP']]),
