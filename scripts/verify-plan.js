@@ -35,6 +35,7 @@ function check(name, fn) {
 const info = k => run(`programInfo(${J(k)})`);
 const addDays = (k, n) => run(`addDays(${J(k)}, ${n})`);
 const rows = (s, k) => run(`liftRows(${J(s)}, ${J(k)})`);
+const D = n => addDays(weekStart(1), n);
 const weekStart = w => addDays('2026-10-14', (w - 1) * 7);
 const logLift = (date, name, sets, session = 'PULL B') => run(`workouts[${J(date + '_lift')}] = { date:${J(date)}, type:'lift', session:${J(session)}, exercises:[{ name:${J(name)}, planned:${J(name)}, skipped:false, sets:${J(sets)} }] };`);
 const clearLogs = () => run('workouts = {}');
@@ -282,6 +283,29 @@ check('A low-readiness session is ignored when setting the next targets', () => 
   const r = rec(ROW[0], ROW, 'PULL B', '2026-11-05');
   assert.deepStrictEqual(r.targets.map(t => t.w), [140, 140, 140, 140]);
   run('fatigueLog = {}');
+});
+
+console.log('Lifting banner');
+const banner = k => run(`phaseBanner(${J(k)})`);
+check('Banner shows week, phase and name, with the next deload', () => {
+  const b = banner(weekStart(1));
+  assert.ok(/Week 1 of 28 · Phase 1 Reclaim/.test(b) && /Next deload: week 6/.test(b) && /Nov 18 to Nov 24/.test(b) && /65–70% 1RM/.test(b), b);
+  assert.ok(/Week 9 of 28 · Phase 2 Build/.test(banner(weekStart(9))) && /Next deload: week 13 \(Jan 6 to Jan 12\)/.test(banner(weekStart(9))));
+  assert.ok(/Phase 3 Lean/.test(banner(weekStart(16))) && /Rest-pause/.test(banner(weekStart(16))) && /wave loading/.test(banner(weekStart(16))));
+  assert.ok(/Week 24 of 28 · Phase 4 Peak/.test(banner(weekStart(24))) && /Next deload: week 27 \(Apr 14 to Apr 20\)/.test(banner(weekStart(24))));
+});
+check('Deload weeks are flagged in the banner and styled as deloads', () => {
+  for (const w of [6, 13, 20, 27]) { const b = banner(weekStart(w)); assert.ok(/class="phase deload"/.test(b) && /Deload week/.test(b) && !/Next deload/.test(b), 'week ' + w); }
+  assert.ok(!/class="phase deload"/.test(banner(weekStart(5))));
+});
+check('After the last deload there is no "next deload" line', () => assert.ok(!/Next deload/.test(banner(weekStart(28)))));
+check('No banner outside the program (before Day 1 or after week 28)', () => {
+  assert.strictEqual(banner(D(-1)), ''); assert.strictEqual(banner(D(196)), '');
+});
+check('Obsolete code is gone (calibration, MACHINES, unused tab key, newfile.js)', () => {
+  assert.ok(!/CAL_WEEKS|isDeloadWeek|const MACHINES|derek-tc-tab/.test(html));
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'newfile.js')));
+  assert.ok(!('main' in JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))));
 });
 
 console.log('Progress ranges');

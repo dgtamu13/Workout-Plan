@@ -2,7 +2,6 @@
   "name": "workout-plan",
   "version": "1.0.0",
   "description": "",
-  "main": "newfile.js",
   "scripts": {
     "test": "node scripts/verify-plan.js"
   },

@@ -16,7 +16,7 @@
 
 </head><body>
 <style>
-/* Layout: calendar on top · sticky tab bar (Lifting / Core / Cardio / Body / Meals / Progress / History) · each exercise is a two-column row: plan left, what you did right. Dark-first. */
+/* Layout: calendar on top · sticky tab bar (Progress / Lifting / Core / Cardio / Body / Meals / History) · each exercise is a two-column row: plan left, what you did right. Dark-first. */
 :root {
   /* DARK SIDE · Imperial console: black + gunmetal, Sith red, console cyan, amber */
   --bg:#07080A; --surf:#101215; --card:#16191D; --border:#262B31;
@@ -198,7 +198,6 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .rec { margin-top:12px; }
 .rec-title { font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--green); margin-bottom:6px; }
 .phase { display:flex; flex-direction:column; gap:3px; border:1px solid var(--border); border-left:3px solid var(--green); background:var(--surf); padding:10px 14px; margin-bottom:12px; font-size:.82rem; line-height:1.45; }
-.phase.calib { border-left-color:var(--yellow); }
 .phase b { font-family:var(--disp); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; }
 .phase span { color:var(--fg2); max-width:70ch; }
 .rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
@@ -641,7 +640,6 @@ const CARDIO = {
   'PULL B': { type:'Zone 2', duration:25, recommended:'Treadmill',       alts:['Stationary Bike','Rower','Stair Master'], note:Z2_NOTE },
   'LEGS B': { type:'Zone 2', duration:25, recommended:'Stationary Bike', alts:['Treadmill','Rower','Stair Master'], note:Z2_NOTE },
 };
-const MACHINES = ['Treadmill','Rower','Stair Master','Stationary Bike'];
 const Z2 = [136, 148];
 
 const LIFT_ALTS = {
@@ -778,6 +776,25 @@ function rangeOptions(dates, today) {
   const years = [...new Set(dates.filter(Boolean).map(d => +d.slice(0, 4)))].filter(v => v < cy).sort((a, b) => b - a).map(v => ({ value:`y:${v}`, label:String(v) }));
   return { months, years };
 }
+// Banner text for the Lifting tab: phase, week, what changes this phase, and the next deload.
+const PHASE_COPY = {
+  1: 'Rebuild your base. Hypertrophy days stop 1–2 reps short of failure. Strength days work up to a clean 5 with about 2 in reserve, no grinding. Keep the weight until every set hits the top of the range, then add the increment.',
+  2: 'Add volume. One extra set on your first two compounds each hypertrophy day, and a lat + rear delt superset on Pull A. Strength days work to the top of the range before adding weight.',
+  3: 'Stay strong while calories come down. Rest-pause on the last set of each isolation lift, and wave loading (5/4/3 reps, twice) on strength-day primaries. Strength-day weights hold.',
+  4: 'Sharpen up. Three working sets per hypertrophy lift and standard sets on strength days. Hold your top-set weights.',
+};
+function phaseBanner(k) {
+  const i = programInfo(k);
+  if (i.status !== 'active') return '';
+  const ph = i.phase, dl = ph.deload;
+  const dlDates = w => { const a = addDays(keyOf(START), (w - 1) * 7); return `${shortDate(a)} to ${shortDate(addDays(a, 6))}`; };
+  const upcoming = PHASES.map(x => x.deload).find(w => w >= i.week);
+  const title = `Week ${i.week} of ${PROGRAM_WEEKS} · Phase ${ph.n} ${ph.name}${i.deload ? ' · Deload week' : ''}`;
+  const text = i.deload
+    ? `Deload: train all six days with the same weights as last week and about 40% fewer sets, rounds and minutes. Stop well short of failure and let your body recover.`
+    : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.${upcoming && upcoming !== i.week ? ` Next deload: week ${upcoming} (${dlDates(upcoming)}).` : ''}`;
+  return `<div class="phase${i.deload ? ' deload' : ''}"><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
+}
 const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
 function plannedSession(date) {
   return programInfo(keyOf(new Date(date.getFullYear(), date.getMonth(), date.getDate()))).session;
@@ -813,7 +830,7 @@ let sessionStart = null;
 let _clockIv = null;
 let swapMemory = {};
 let fatigueLog = {};
-const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', t:'derek-tc-tab', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue' };
+const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue' };
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -941,8 +958,6 @@ function liftHistory(name, k, count) {
 const lastLift = (name, k) => liftHistory(name, k, 1)[0] || null;
 // Double progression from Day 1. Same weight until every working set hits the top of the bracket, then add the increment
 // (+5 lb upper, +10 lb lower). A lift that stalls for two sessions gets a +0.5 lb micro-load.
-const CAL_WEEKS = 0;
-function programWeek(k) { const d = Math.round((fromKey(k) - START) / 86400000); return d < 0 ? 0 : Math.floor(d / 7) + 1; }
 const round25 = w => Math.round(w / 2.5) * 2.5;
 const stepDown = (n, lo, hi) => i => hi - Math.min(hi - lo, Math.max(0, i - 1)); // 8,8,7,6 for four sets in 6–8
 function firstSession(name, p, session, k, lo, hi, n) {
@@ -971,7 +986,7 @@ function applyReadiness(rec, k) {
 }
 function planLiftRec(name, p, session, k) {
   const [lo, hi] = range(p[3]); const n = +p[2];
-  const info = programInfo(k), S = isStrength(session), wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
+  const info = programInfo(k), S = isStrength(session);
   const hist = liftHistory(name, k, 2), last = hist[0] || null;
   const inc = liftInc(session, name);
   if (!last) return firstSession(name, p, session, k, lo, hi, n);
@@ -1225,9 +1240,6 @@ function showNutriToast(phase) {
   setTimeout(() => t.classList.remove('show'), 8000);
 }
 
-function isDeloadWeek(k) {
-  return programInfo(k).deload;
-}
 
 
 function streakAndConsistency() {
@@ -1492,12 +1504,8 @@ function renderDay(type) {
   </div>` : '';
   let body = '';
   if (type === 'lift') {
-    const wk = programWeek(k), cal = wk > 0 && wk <= CAL_WEEKS;
-    const deloadBanner = isDeloadWeek(k) ? `<div class="phase deload"><b>⬇ Deload Week</b><span>Same weights as last week, about 40% fewer sets. Stop well short of failure and let your nervous system recover.</span></div>` : '';
-    body = `<div class="phase ${cal ? 'calib' : ''}"><b>${cal ? `Calibration · Week ${wk} of ${CAL_WEEKS}` : `Double progression · Week ${wk}`}</b><span>${cal
-      ? 'Find a weight that lands inside each rep bracket with about 2 reps left. Log every set. No rep-chasing yet.'
-      : 'Keep the weight until every working set hits the top of the bracket, then add the smallest increment and drop back to the bottom.'}</span></div>`
-      + deloadBanner + prBanner(d) + overloadPlan(d, session, k)
+    body = phaseBanner(k)
+      + prBanner(d) + overloadPlan(d, session, k)
       + d.exercises.map((ex, i) => liftRow(ex, i, session, k)).join('');
   }
   if (type === 'core') body = d.exercises.map((ex, i) => coreRow(ex, i, session, k)).join('');
@@ -1592,8 +1600,8 @@ function overloadPlan(d, session, k) {
     return { ex, ov, last };
   });
   if (!rows.length) return '';
-  const n = c => rows.filter(r => r.ov.cls === c).length;
-  const sum = [n('up') && `${n('up')} up`, n('build') && `${n('build')} adding reps`, n('down') && `${n('down')} down`, n('hold') && `${n('hold')} calibrating`].filter(Boolean).join(' · ');
+  const n = c => rows.filter(r => r.ov.cls === c).length, a = x => rows.filter(r => r.ov.act === x).length;
+  const sum = [n('up') && `${n('up')} up`, n('build') && `${n('build')} adding reps`, n('down') && `${n('down')} down`, a('Hold') && `${a('Hold')} holding`, a('Baseline') && `${a('Baseline')} baseline`].filter(Boolean).join(' · ');
   return `<details class="hw" data-key="ovl" ${ovlOpen ? 'open' : ''}><summary><span class="hw-date">Overload plan</span><span class="hw-sum">${sum}</span></summary><div class="hw-body"><div class="ovl-list">
     ${rows.map(r => `<div class="ovl-row"><div class="nm">${esc(r.ex.name)}<div class="lt">Last: ${esc(r.last)}</div></div><div class="to ${r.ov.cls}">${esc(r.ov.act)} → ${esc(r.ov.to)}</div></div>`).join('')}
   </div></div></details>`;
@@ -1932,7 +1940,7 @@ main.addEventListener('click', async e => {
   if (act === 'add') { const ex = curDraft().exercises[i]; const last = ex.sets[ex.sets.length - 1] || {}; ex.sets.push(tab === 'lift' ? { w:last.w ?? null, r:null } : { v:null, w:last.w ?? null }); touch(); renderNow(); return; }
   if (act === 'rm') { curDraft().exercises[i].sets.pop(); touch(); renderNow(); return; }
   if (act === 'submit') { await submit(); return; }
-  if (act === 'open') { const w = workouts[b.dataset.id]; if (w) { tab = w.type; lsSet(LS.t, tab); selected = fromKey(w.date); viewYear = selected.getFullYear(); viewMonth = selected.getMonth(); renderCalendar(); renderNow(); window.scrollTo({ top:0 }); } return; }
+  if (act === 'open') { const w = workouts[b.dataset.id]; if (w) { tab = w.type; selected = fromKey(w.date); viewYear = selected.getFullYear(); viewMonth = selected.getMonth(); renderCalendar(); renderNow(); window.scrollTo({ top:0 }); } return; }
   if (act === 'export-one') { const w = workouts[b.dataset.id]; if (w) exportCSV([w], `workout-${w.date}-${w.type}.csv`); return; }
   if (act === 'export-all') { exportCSV(filteredWorkouts(), `workouts-${keyOf(new Date())}.csv`); return; }
   if (act === 'export-body') { saveCSV(bodyCSV(), `body-log-${keyOf(new Date())}.csv`); return; }
@@ -1980,7 +1988,7 @@ document.addEventListener('click', e => {
   if (openPicker && !e.target.closest('.picker')) closePicker();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && openPicker) closePicker(); });
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; openPicker = null; lsSet(LS.t, tab); renderNow(); }));
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; openPicker = null; renderNow(); }));
 
 
 // ═══ Body · Meals · Progress ════════════════════════════════════════
