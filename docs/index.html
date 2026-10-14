@@ -776,23 +776,34 @@ function rangeOptions(dates, today) {
   const years = [...new Set(dates.filter(Boolean).map(d => +d.slice(0, 4)))].filter(v => v < cy).sort((a, b) => b - a).map(v => ({ value:`y:${v}`, label:String(v) }));
   return { months, years };
 }
-// Banner text for the Lifting tab: phase, week, what changes this phase, and the next deload.
+// Banner for the Lifting, Core and Cardio tabs: phase, week, what changes this phase, and the next deload.
 const PHASE_COPY = {
   1: 'Rebuild your base. Hypertrophy days stop 1–2 reps short of failure. Strength days work up to a clean 5 with about 2 in reserve, no grinding. Keep the weight until every set hits the top of the range, then add the increment.',
   2: 'Add volume. One extra set on your first two compounds each hypertrophy day, and a lat + rear delt superset on Pull A. Strength days work to the top of the range before adding weight.',
   3: 'Stay strong while calories come down. Rest-pause on the last set of each isolation lift, and wave loading (5/4/3 reps, twice) on strength-day primaries. Strength-day weights hold.',
   4: 'Sharpen up. Three working sets per hypertrophy lift and standard sets on strength days. Hold your top-set weights.',
 };
-function phaseBanner(k) {
+const CORE_COPY = 'Core circuit of about 10 minutes. Work close to failure and stop a set when your form breaks. Once every set reaches the target, add reps or hold time. The circuit stays the same all program.';
+const CARDIO_COPY = {
+  1: 'HIIT at about 80% effort for 10 rounds. Zone 2 for 25–30 minutes at 136–148 bpm.',
+  2: 'HIIT builds up to 12 rounds on Push A (10 on Pull A). Zone 2 for 25–30 minutes.',
+  3: 'HIIT as in Build. Zone 2 on Legs A rises to 35 minutes.',
+  4: 'HIIT is back to 10 rounds. Zone 2 is 30 minutes.',
+};
+const DELOAD_COPY = {
+  lift: 'Deload: train all six days with the same weights as last week and about 40% fewer sets. Stop well short of failure and let your body recover.',
+  core: 'Deload: about 40% fewer core sets (2 per exercise instead of 3). Same exercises, form stays clean.',
+  cardio: 'Deload: HIIT drops to 6 rounds and Zone 2 is about 40% shorter (for example 18 minutes instead of 30). Keep it easy.',
+};
+function phaseBanner(k, type = 'lift') {
   const i = programInfo(k);
   if (i.status !== 'active') return '';
-  const ph = i.phase, dl = ph.deload;
+  const ph = i.phase;
   const dlDates = w => { const a = addDays(keyOf(START), (w - 1) * 7); return `${shortDate(a)} to ${shortDate(addDays(a, 6))}`; };
   const upcoming = PHASES.map(x => x.deload).find(w => w >= i.week);
   const title = `Week ${i.week} of ${PROGRAM_WEEKS} · Phase ${ph.n} ${ph.name}${i.deload ? ' · Deload week' : ''}`;
-  const text = i.deload
-    ? `Deload: train all six days with the same weights as last week and about 40% fewer sets, rounds and minutes. Stop well short of failure and let your body recover.`
-    : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.${upcoming && upcoming !== i.week ? ` Next deload: week ${upcoming} (${dlDates(upcoming)}).` : ''}`;
+  const body = type === 'core' ? CORE_COPY : type === 'cardio' ? CARDIO_COPY[ph.n] : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.`;
+  const text = i.deload ? DELOAD_COPY[type] || DELOAD_COPY.lift : `${body}${upcoming && upcoming !== i.week ? ` Next deload: week ${upcoming} (${dlDates(upcoming)}).` : ''}`;
   return `<div class="phase${i.deload ? ' deload' : ''}"><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
 }
 const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
@@ -1504,12 +1515,12 @@ function renderDay(type) {
   </div>` : '';
   let body = '';
   if (type === 'lift') {
-    body = phaseBanner(k)
+    body = phaseBanner(k, 'lift')
       + prBanner(d) + overloadPlan(d, session, k)
       + d.exercises.map((ex, i) => liftRow(ex, i, session, k)).join('');
   }
-  if (type === 'core') body = d.exercises.map((ex, i) => coreRow(ex, i, session, k)).join('');
-  if (type === 'cardio') body = cardioRow(d.exercises[0], session, k);
+  if (type === 'core') body = phaseBanner(k, 'core') + d.exercises.map((ex, i) => coreRow(ex, i, session, k)).join('');
+  if (type === 'cardio') body = phaseBanner(k, 'cardio') + cardioRow(d.exercises[0], session, k);
   return dayHead(k, session) + checkinBanner +
     `<div class="colheads"><div>Plan · target today</div><div>What you did</div></div>` +
     body + submitBar(type, k, d);
