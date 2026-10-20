@@ -97,6 +97,7 @@ Limits checked against the current plan:
 
 - **Protein is never changed.** `p` must equal the current value, or be left out.
 - **Each calorie target may move by at most 150 kcal** from its current value.
+- **2-week lockout.** A `kcal` change is rejected if a calorie target change was applied less than 14 days before `generatedAt` (a plan where you rejected the calorie change, or that you undid, does not count). The error says when the lockout ends. Carbs, fat and menu changes are still allowed during the lockout; leave `kcal` unchanged or out of the file.
 
 Every meal change needs your approval (see below), whatever the file's tag says.
 
@@ -157,13 +158,13 @@ Entries the agent tags `approval` start unaccepted. In addition, the app **alway
 | HIIT rounds | At most 16, and HIIT only on push and pull sessions. |
 | Zone 2 duration | At most 60 minutes, with `hrLow`/`hrHigh` inside 136–148 bpm. |
 | Protein | Must not change. |
-| Calories | A change of at most 150 kcal per target (training and rest are separate targets). |
+| Calories | A change of at most 150 kcal per target (training and rest are separate targets), and not within 14 days of the last applied calorie change. |
 | Stall swaps | One exercise out and one in, at most one swap per session per week, and the new exercise's first `muscleGroup` must match the one it replaces. |
 | Reasons | Every change needs a `changeLog` entry. |
 | Approvals | Every `approval` entry needs a matching `approvals` item. |
 | Program | The lifting, core and cardio after the change must pass the program checks. |
 
-The app does **not** check the 2-week calorie lockout, the weekly HIIT-session count (3–4), the stall condition itself (3 sessions without reaching the top of the rep range), or that a swap keeps the same movement pattern (it only compares the listed muscle group). Those rules stay with the agent. Every calorie change still needs your approval before it happens, and every swap can be rejected in the review or undone afterwards.
+The app does **not** check the weekly HIIT-session count (3–4), the stall condition itself (3 sessions without reaching the top of the rep range), or that a swap keeps the same movement pattern (it only compares the listed muscle group). Those rules stay with the agent. Every calorie change still needs your approval before it happens, and every swap can be rejected in the review or undone afterwards.
 
 ## `applied-plans` records
 

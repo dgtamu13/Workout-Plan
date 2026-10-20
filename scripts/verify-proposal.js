@@ -93,6 +93,26 @@ check('A calorie change of exactly 150 (up or down) is allowed, on either target
   const down = review(mut(f => { f.meals.targets.rest = { kcal: 2000 }; f.changeLog.find(c => c.id === 'c7').refs.push('meals/targets/rest'); })); assert.ok(down.ok, down.errors.join());
   const too = review(mut(f => { f.meals.targets.rest = { kcal: 1999 }; })); assert.ok(!too.ok && /rest\.kcal.*limited/.test(too.errors.join()));
 });
+const kcalRec = (appliedAt, extra = {}) => ({ id: 'p1', generatedAt: '2026-10-26T20:00:00Z', appliedAt, accepted: [{ id: 'meals/targets/training/kcal' }], rejected: [], ...extra });
+const withApplied = (...recs) => ({ ...ctx(), applied: recs });
+check('Calorie lockout: a calorie change within 14 days of the last one is rejected, with the date it ends', () => {
+  const r = review(EXAMPLE, withApplied(kcalRec('2026-10-27T12:00:00Z')));
+  assert.ok(!r.ok && /calories were last changed on 2026-10-27; the 14-day lockout between calorie changes runs until 2026-11-10/.test(r.errors.join()), r.errors.join());
+});
+check('Calorie lockout: allowed from exactly 14 days after the last change', () => {
+  assert.ok(review(EXAMPLE, withApplied(kcalRec('2026-10-19T20:00:00Z'))).ok, 'generatedAt 2026-11-02T20:00 is 14 days after 10-19T20:00');
+  assert.ok(!review(EXAMPLE, withApplied(kcalRec('2026-10-19T20:00:01Z'))).ok, 'one second short');
+});
+check('Calorie lockout: undone plans, plans without an accepted calorie change, and unchanged calories do not count', () => {
+  assert.ok(review(EXAMPLE, withApplied(kcalRec('2026-10-30T12:00:00Z', { undoneAt: '2026-10-31T00:00:00Z' }))).ok);
+  assert.ok(review(EXAMPLE, withApplied({ ...kcalRec('2026-10-30T12:00:00Z'), accepted: [{ id: 'meals/targets/training/c' }, { id: 'lifting/PUSH A/Incline DB Press/targetLb' }], rejected: [{ id: 'meals/targets/training/kcal' }] })).ok);
+  const keep = review(mut(f => { f.meals.targets.training.kcal = 2500; f.meals.targets.training.c = 290; }), withApplied(kcalRec('2026-10-30T12:00:00Z')));
+  assert.ok(keep.ok, keep.errors.join()); // carbs and menu changes are allowed during the lockout when kcal is untouched
+});
+check('Calorie lockout: the most recent calorie change decides', () => {
+  const r = review(EXAMPLE, withApplied(kcalRec('2026-09-01T12:00:00Z'), kcalRec('2026-10-30T12:00:00Z', { id: 'p2' })));
+  assert.ok(!r.ok && /last changed on 2026-10-30/.test(r.errors.join()));
+});
 rejects('a menu item with an unknown food', f => { f.meals.menus.A.items[0].food = 'nope'; }, /unknown food "nope"/);
 rejects('a new exercise missing required fields', f => { f.lifting['PUSH A'][2] = { name: 'Cable Crossover' }; }, /lifting\["PUSH A"\]\[2\]\.muscleGroup: required for a new exercise/);
 rejects('a bad rep range on an existing exercise', f => { f.lifting['PUSH A'][0].reps = { low: 15, high: 10 }; }, /lifting\["PUSH A"\]\[0\]\.reps/);
@@ -192,8 +212,8 @@ check('PLAN_SCHEMA.md has a full example identical to the shipped example file, 
 });
 check('The limits table in PLAN_SCHEMA.md matches the limits in the code', () => {
   const md = fs.readFileSync(path.join(root, 'PLAN_SCHEMA.md'), 'utf8');
-  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, zone2Hr: [136, 148] });
-  assert.ok(/At most 16/.test(md) && /At most 60 minutes/.test(md) && /at most 150 kcal/.test(md) && /136–148/.test(md));
+  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, zone2Hr: [136, 148] });
+  assert.ok(/At most 16/.test(md) && /At most 60 minutes/.test(md) && /at most 150 kcal/.test(md) && /14 days/.test(md) && /136–148/.test(md));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

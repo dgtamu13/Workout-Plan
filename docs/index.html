@@ -2885,7 +2885,7 @@ if (window.SheetsSync) {
   SheetsSync.configure({ getTables: sheetTables });
   SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; afterSnap(); });
 }
-const reviewCtx = () => ({ program: PROGRAM, plan, foods });
+const reviewCtx = () => ({ program: PROGRAM, plan, foods, applied: Object.values(appliedPlans) });
 const appliedList = () => Object.values(appliedPlans);
 // True when the file in the Drive folder has a generatedAt later than every plan applied so far.
 const newProposalReady = () => !!(proposalSeen && window.PlanProposal && PlanProposal.isNewer(proposalSeen.generatedAt, appliedList()));

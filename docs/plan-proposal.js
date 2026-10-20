@@ -21,7 +21,7 @@
   const Z2_KEYS = ['date', 'session', 'type', 'machine', 'durationMin', 'hrLow', 'hrHigh'];
   const MACRO = { kcal: ['calories', 'kcal'], p: ['protein', 'g'], f: ['fat', 'g'], c: ['carbs', 'g'] };
   // Hard limits. A file outside them is rejected before it is shown.
-  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, zone2Hr: [136, 148] };
+  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, zone2Hr: [136, 148] };
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
   const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -40,14 +40,22 @@
   // The id of the applied-plans record, taken from generatedAt.
   const proposalId = generatedAt => 'p' + String(generatedAt).replace(/[^0-9A-Za-z]/g, '');
 
+  // The date of the most recent applied calorie target change (accepted and not undone), or null.
+  const lastCalorieChange = applied => (applied || []).filter(r => !r.undoneAt && (r.accepted || []).some(c => /^meals\/targets\/\w+\/kcal$/.test(c.id)))
+    .map(r => Date.parse(r.appliedAt)).filter(t => !Number.isNaN(t)).sort((a, b) => b - a)[0] ?? null;
+  const dayStr = t => new Date(t).toISOString().slice(0, 10);
+
   // ── Validation ─────────────────────────────────────────────────
-  // ctx: { program, plan, foods }  the current program document, meal plan ({ targets, menus }) and known foods.
+  // ctx: { program, plan, foods, applied }  the current program document, meal plan ({ targets, menus }), known foods, and the
+  // applied-plans records (used for the 2-week calorie lockout).
   function validate(raw, ctx = {}) {
     const errors = [], warnings = [];
     const err = (path, msg) => errors.push(`${path}: ${msg}`);
     const fail = () => ({ ok: false, errors, warnings, proposal: null });
     if (!isObj(raw)) { errors.push('The file must contain a JSON object.'); return fail(); }
     const L = lib(), program = ctx.program || L.BUILTIN, plan = ctx.plan || null, foods = ctx.foods || {};
+    const lastChange = lastCalorieChange(ctx.applied), gen = Date.parse(raw.generatedAt);
+    const locked = lastChange !== null && !Number.isNaN(gen) && gen - lastChange < LIMITS.lockoutDays * 864e5;
     unknownKeys(raw, TOP_KEYS, '', err);
     if (raw.schema !== SCHEMA) err('schema', `must be "${SCHEMA}"`);
     if (raw.version !== 1) err('version', 'must be 1');
@@ -180,6 +188,7 @@
                 if (!isNum(t[k]) || t[k] < min || t[k] > max) { err(`${p}.${k}`, `must be a number from ${min} to ${max}`); continue; }
                 if (k === 'p' && isNum(now.p) && t.p !== now.p) { err(`${p}.p`, `protein must not change (it is ${now.p} g; the file has ${t.p} g)`); continue; }
                 if (k === 'kcal' && isNum(now.kcal) && Math.abs(t.kcal - now.kcal) > LIMITS.kcalStep) { err(`${p}.kcal`, `a calorie change is limited to ${LIMITS.kcalStep} kcal per target (${now.kcal} to ${t.kcal} is ${Math.abs(t.kcal - now.kcal)})`); continue; }
+                if (k === 'kcal' && isNum(now.kcal) && t.kcal !== now.kcal && locked) { err(`${p}.kcal`, `calories were last changed on ${dayStr(lastChange)}; the ${LIMITS.lockoutDays}-day lockout between calorie changes runs until ${dayStr(lastChange + LIMITS.lockoutDays * 864e5)}. Keep kcal at ${now.kcal} until then (carbs, fat and menu changes are still allowed)`); continue; }
                 res.targets[day][k] = t[k];
               }
             }
