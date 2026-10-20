@@ -75,11 +75,11 @@ check('Phase boundaries fall on the table dates', () => {
     assert.strictEqual(info(addDays(from, -1)).phase.n, n === 1 ? 1 : n - 1);
   });
 });
-const DL = { 6: ['2026-11-24', '2026-11-30'], 13: ['2027-01-12', '2027-01-18'], 20: ['2027-03-02', '2027-03-08'], 27: ['2027-04-20', '2027-04-26'] };
-check('Weeks 6 / 13 / 20 / 27 are deloads with the exact date ranges', () => {
+const DL = { 5: ['2026-11-17', '2026-11-23'], 10: ['2026-12-22', '2026-12-28'], 15: ['2027-01-26', '2027-02-01'], 20: ['2027-03-02', '2027-03-08'], 25: ['2027-04-06', '2027-04-12'] };
+check('Every 5th week (5 / 10 / 15 / 20 / 25) is a deload with the exact date ranges', () => {
   const seen = {};
   for (let d = 0; d < 196; d++) { const k = addDays('2026-10-20', d), i = info(k); if (i.deload) (seen[i.week] ||= []).push(k); }
-  assert.deepStrictEqual(Object.keys(seen).map(Number), [6, 13, 20, 27]);
+  assert.deepStrictEqual(Object.keys(seen).map(Number), [5, 10, 15, 20, 25]);
   for (const [w, [a, b]] of Object.entries(DL)) { assert.strictEqual(seen[w][0], a); assert.strictEqual(seen[w][seen[w].length - 1], b); assert.strictEqual(seen[w].length, 7); }
 });
 
@@ -132,7 +132,7 @@ check('Phase techniques never leak outside their weeks', () => {
 check('Deload weeks cut sets about 40% (5→3, 4→2, 3→2, 2→1) in every phase', () => {
   const cut = { 6: 4, 5: 3, 4: 2, 3: 2, 2: 1 };
   const base = run('LIFTING');
-  for (const w of [6, 13, 20, 27]) {
+  for (const w of [5, 10, 15, 20, 25]) {
     const ph = info(weekStart(w)).phase.n;
     for (const s of SESS) {
       let compounds = 0;
@@ -147,7 +147,7 @@ check('Deload weeks cut sets about 40% (5→3, 4→2, 3→2, 2→1) in every pha
   }
 });
 check('Deload weeks cut HIIT rounds, Zone 2 minutes and core sets about 40%', () => {
-  const dl = weekStart(6), n = weekStart(5);
+  const dl = weekStart(5), n = weekStart(4);
   assert.strictEqual(run(`cardioPlan('PUSH A', ${J(dl)})`).rounds, 6);
   assert.strictEqual(run(`cardioPlan('LEGS A', ${J(dl)})`).duration, 18);
   assert.strictEqual(run(`cardioPlan('PUSH B', ${J(dl)})`).duration, 15);
@@ -212,16 +212,16 @@ check('First session: hypertrophy aims for ~3–4 RIR; strength a clean 5 at ~2 
   assert.ok(s.targets.every(t => t.r === 5));
 });
 check('Deload week: same weight as the prior normal week, fewer sets', () => {
-  clearLogs(); logLift(weekStart(5), 'Barbell Bench Press', sets(150, [5, 5, 5, 5, 5]), 'PUSH B');
-  const k = addDays(weekStart(6), 3), p = rows('PUSH B', k)[0], r = rec('Barbell Bench Press', p, 'PUSH B', k);
+  clearLogs(); logLift(weekStart(4), 'Barbell Bench Press', sets(150, [5, 5, 5, 5, 5]), 'PUSH B');
+  const k = addDays(weekStart(5), 3), p = rows('PUSH B', k)[0], r = rec('Barbell Bench Press', p, 'PUSH B', k);
   assert.strictEqual(+p[2], 3); assert.deepStrictEqual(r.targets.map(t => t.w), [150, 150, 150]);
 });
 check('Week after a deload resumes from the last normal week (deload logs are skipped)', () => {
   clearLogs();
   const bench = ['Barbell Bench Press', 'RIR 1', '5', '3–5', '2–3 min'];
-  logLift(addDays(weekStart(5), 3), bench[0], sets(150, [5, 5, 5, 5, 5]), 'PUSH B');
-  logLift(addDays(weekStart(6), 3), bench[0], sets(150, [3, 3, 3]), 'PUSH B');
-  const r = rec(bench[0], bench, 'PUSH B', addDays(weekStart(7), 3));
+  logLift(addDays(weekStart(4), 3), bench[0], sets(150, [5, 5, 5, 5, 5]), 'PUSH B');
+  logLift(addDays(weekStart(5), 3), bench[0], sets(150, [3, 3, 3]), 'PUSH B');
+  const r = rec(bench[0], bench, 'PUSH B', addDays(weekStart(6), 3));
   assert.strictEqual(r.targets[0].w, 155, 'all 5 sets hit the top at 150 before the deload, so +5 lb upper body');
 });
 check('Wave loading (Phase 3): peak sets 5/4/3 ×2 at ascending weights', () => {
@@ -248,7 +248,7 @@ check('HIIT progression: +1 round per session up to the phase cap', () => {
   clearLogs();
   const w = (date, rounds) => run(`workouts[${J(date + '_cardio')}] = { date:${J(date)}, type:'cardio', session:'PUSH A', exercises:[{ planned:'HIIT', name:'HIIT', skipped:false, duration:15, rounds:${rounds} }] };`);
   w(weekStart(8), 10); assert.strictEqual(run(`cardioRec('PUSH A', ${J(weekStart(9))})`).rounds, 11);
-  w(weekStart(9), 12); assert.strictEqual(run(`cardioRec('PUSH A', ${J(weekStart(10))})`).rounds, 12);
+  w(weekStart(9), 12); assert.strictEqual(run(`cardioRec('PUSH A', ${J(weekStart(11))})`).rounds, 12);
   assert.strictEqual(run(`cardioRec('PUSH A', ${J(weekStart(24))})`).rounds, 10);
 });
 
@@ -290,19 +290,19 @@ console.log('Lifting banner');
 const banner = k => run(`phaseBanner(${J(k)})`);
 check('Banner shows week, phase and name, with the next deload', () => {
   const b = banner(weekStart(1));
-  assert.ok(/Week 1 of 28 · Phase 1 Reclaim/.test(b) && /Next deload: week 6/.test(b) && /Nov 24 to Nov 30/.test(b) && /65–70% 1RM/.test(b), b);
-  assert.ok(/Week 9 of 28 · Phase 2 Build/.test(banner(weekStart(9))) && /Next deload: week 13 \(Jan 12 to Jan 18\)/.test(banner(weekStart(9))));
+  assert.ok(/Week 1 of 28 · Phase 1 Reclaim/.test(b) && /Next deload: week 5/.test(b) && /Nov 17 to Nov 23/.test(b) && /65–70% 1RM/.test(b), b);
+  assert.ok(/Week 9 of 28 · Phase 2 Build/.test(banner(weekStart(9))) && /Next deload: week 10 \(Dec 22 to Dec 28\)/.test(banner(weekStart(9))));
   assert.ok(/Phase 3 Lean/.test(banner(weekStart(16))) && /Rest-pause/.test(banner(weekStart(16))) && /wave loading/.test(banner(weekStart(16))));
-  assert.ok(/Week 24 of 28 · Phase 4 Peak/.test(banner(weekStart(24))) && /Next deload: week 27 \(Apr 20 to Apr 26\)/.test(banner(weekStart(24))));
+  assert.ok(/Week 24 of 28 · Phase 4 Peak/.test(banner(weekStart(24))) && /Next deload: week 25 \(Apr 6 to Apr 12\)/.test(banner(weekStart(24))));
 });
 check('Deload weeks are flagged in the banner and styled as deloads', () => {
-  for (const w of [6, 13, 20, 27]) { const b = banner(weekStart(w)); assert.ok(/class="phase deload"/.test(b) && /Deload week/.test(b) && !/Next deload/.test(b), 'week ' + w); }
-  assert.ok(!/class="phase deload"/.test(banner(weekStart(5))));
+  for (const w of [5, 10, 15, 20, 25]) { const b = banner(weekStart(w)); assert.ok(/class="phase deload"/.test(b) && /Deload week/.test(b) && !/Next deload/.test(b), 'week ' + w); }
+  assert.ok(!/class="phase deload"/.test(banner(weekStart(6))) && !/class="phase deload"/.test(banner(weekStart(4))));
 });
 check('Core and Cardio banners show the same week/phase title and next deload', () => {
   for (const type of ['core', 'cardio']) {
     const b = run(`phaseBanner(${J(weekStart(9))}, ${J(type)})`);
-    assert.ok(/Week 9 of 28 · Phase 2 Build/.test(b) && /Next deload: week 13 \(Jan 12 to Jan 18\)/.test(b), type + ': ' + b);
+    assert.ok(/Week 9 of 28 · Phase 2 Build/.test(b) && /Next deload: week 10 \(Dec 22 to Dec 28\)/.test(b), type + ': ' + b);
     assert.ok(!/Intensity:/.test(b) && !/1RM/.test(b), type + ' should not show lifting intensity');
   }
 });
@@ -314,12 +314,23 @@ check('Cardio banner numbers match the cardio plan in every phase', () => {
   assert.ok(/10 rounds/.test(cb(24)) && /30 minutes/.test(cb(24)) && cp('LEGS A', 24).duration === 30 && cp('PUSH B', 24).duration === 30 && cp('PUSH A', 24).maxRounds === 10);
 });
 check('Deload banners on Core and Cardio match the deload numbers', () => {
-  const dl = weekStart(6);
+  const dl = weekStart(5);
   assert.ok(/class="phase deload"/.test(run(`phaseBanner(${J(dl)}, 'core')`)) && /2 per exercise/.test(run(`phaseBanner(${J(dl)}, 'core')`)));
   assert.ok(run(`coreRows('PUSH A', ${J(dl)})`).every(r => r[1] === '2'));
   const c = run(`phaseBanner(${J(dl)}, 'cardio')`);
   assert.ok(/class="phase deload"/.test(c) && /6 rounds/.test(c) && /18 minutes/.test(c));
   assert.strictEqual(run(`cardioPlan('PUSH A', ${J(dl)})`).rounds, 6); assert.strictEqual(run(`cardioPlan('LEGS A', ${J(dl)})`).duration, 18);
+});
+check('A pull-forward deload is a deload week and restarts the 5-week count', () => {
+  const sched = () => run('[...deloadWeeks()].sort((a, b) => a - b)');
+  assert.deepStrictEqual(sched(), [5, 10, 15, 20, 25]);
+  run(`applyProgram(Object.assign(JSON.parse(JSON.stringify(ProgramLib.BUILTIN)), { deloadWeeks: [${J(weekStart(8))}] }))`);
+  assert.deepStrictEqual(sched(), [5, 8, 13, 18, 23, 28]);
+  assert.strictEqual(info(weekStart(8)).deload, true); assert.strictEqual(info(weekStart(10)).deload, false);
+  assert.ok(/Next deload: week 13/.test(banner(weekStart(9))));
+  run(`applyProgram(Object.assign(JSON.parse(JSON.stringify(ProgramLib.BUILTIN)), { deloadWeeks: [${J(weekStart(5))}] }))`);
+  assert.deepStrictEqual(sched(), [5, 10, 15, 20, 25], 'a pull-forward onto a scheduled deload changes nothing');
+  run('applyProgram(ProgramLib.BUILTIN)');
 });
 check('After the last deload there is no "next deload" line', () => assert.ok(!/Next deload/.test(banner(weekStart(28)))));
 check('No banner outside the program (before Day 1 or after week 28)', () => {

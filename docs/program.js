@@ -103,6 +103,7 @@
     if (!isObj(doc)) return ['program: must be an object'];
     if (!isInt(doc.version, 1, 1e9)) bad('version', 'must be a whole number, 1 or more');
     if (!SOURCES.includes(doc.source)) bad('source', 'must be "built-in", "agent" or "manual"');
+    if (doc.deloadWeeks !== undefined && !(Array.isArray(doc.deloadWeeks) && doc.deloadWeeks.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))) bad('deloadWeeks', 'must be a list of YYYY-MM-DD dates (the first day of each pull-forward deload week)');
     if (!isObj(doc.sessions)) bad('sessions', 'must be an object');
     else {
       for (const s of SESSIONS) {

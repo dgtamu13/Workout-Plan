@@ -671,12 +671,23 @@ const longDate = k => fromKey(k).toLocaleDateString('en-US', { weekday:'short', 
 const num = v => (v === null || v === undefined || v === '' || isNaN(+v)) ? null : +v;
 const clone = o => JSON.parse(JSON.stringify(o));
 // ═══ 28-week program: phases, deloads, week math (everything derives from START) ═══
+// Deloads follow the training agent spec: every 5th working week (5, 10, 15, ...), counted from the last deload. A pull-forward
+// deload (config/program deloadWeeks, the first day of the week) is a deload week too and restarts the count, so later deloads move with it.
+const DELOAD_EVERY = 5;
+let _dlFor = null, _dl = null;
+function deloadWeeks() {
+  if (_dlFor === PROGRAM) return _dl;
+  const pulls = new Set((PROGRAM.deloadWeeks || []).map(d => Math.floor(dayIndex(d) / 7) + 1));
+  const out = new Set(); let since = 0;
+  for (let w = 1; w <= PROGRAM_WEEKS; w++) { since++; if (pulls.has(w) || since === DELOAD_EVERY) { out.add(w); since = 0; } }
+  _dlFor = PROGRAM; _dl = out; return out;
+}
 const PROGRAM_WEEKS = 28;
 const PHASES = [
-  { n:1, name:'Reclaim', from:1,  to:6,  deload:6,  hyp:'65–70% 1RM', str:'75–80% 1RM' },
-  { n:2, name:'Build',   from:7,  to:14, deload:13, hyp:'70–75% 1RM', str:'80–87% 1RM' },
-  { n:3, name:'Lean',    from:15, to:22, deload:20, hyp:'72–78% 1RM', str:'85–90% 1RM' },
-  { n:4, name:'Peak',    from:23, to:28, deload:27, hyp:'70–75% 1RM', str:'85–90% 1RM' },
+  { n:1, name:'Reclaim', from:1,  to:6,  hyp:'65–70% 1RM', str:'75–80% 1RM' },
+  { n:2, name:'Build',   from:7,  to:14, hyp:'70–75% 1RM', str:'80–87% 1RM' },
+  { n:3, name:'Lean',    from:15, to:22, hyp:'72–78% 1RM', str:'85–90% 1RM' },
+  { n:4, name:'Peak',    from:23, to:28, hyp:'70–75% 1RM', str:'85–90% 1RM' },
 ];
 const DELOAD_KEEP = 0.6; // deload weeks keep ~60% of sets, rounds and minutes
 const OLD_BESTS = { 'Barbell Bench Press':200, 'Back Squat':250, 'Conventional Deadlift':365, 'Standing OHP':110 };
@@ -696,7 +707,7 @@ function programInfo(k) {
   const week = Math.floor(d / 7) + 1;
   if (week > PROGRAM_WEEKS) return { status:'complete', week, day:(d % 7) + 1, session:null, phase:PHASES[PHASES.length - 1], deload:false };
   const phase = PHASES.find(ph => week >= ph.from && week <= ph.to);
-  return { status:'active', week, day:(d % 7) + 1, session:CYCLE[d % 7], phase, deload:week === phase.deload };
+  return { status:'active', week, day:(d % 7) + 1, session:CYCLE[d % 7], phase, deload:deloadWeeks().has(week) };
 }
 // ═══ Progress ranges ═══
 // range: 'mtd' | 'ytd' | 'm:YYYY-MM' (that month through today) | 'y:YYYY' (that whole calendar year)
@@ -743,7 +754,7 @@ function phaseBanner(k, type = 'lift') {
   if (i.status !== 'active') return '';
   const ph = i.phase;
   const dlDates = w => { const a = addDays(keyOf(START), (w - 1) * 7); return `${shortDate(a)} to ${shortDate(addDays(a, 6))}`; };
-  const upcoming = PHASES.map(x => x.deload).find(w => w >= i.week);
+  const upcoming = [...deloadWeeks()].sort((a, b) => a - b).find(w => w >= i.week);
   const title = `Week ${i.week} of ${PROGRAM_WEEKS} · Phase ${ph.n} ${ph.name}${i.deload ? ' · Deload week' : ''}`;
   const body = type === 'core' ? CORE_COPY : type === 'cardio' ? CARDIO_COPY[ph.n] : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.`;
   const text = i.deload ? DELOAD_COPY[type] || DELOAD_COPY.lift : `${body}${upcoming && upcoming !== i.week ? ` Next deload: week ${upcoming} (${dlDates(upcoming)}).` : ''}`;

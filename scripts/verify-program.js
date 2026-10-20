@@ -64,10 +64,13 @@ check('Base lifting, core and cardio tables are identical to the old ones', () =
   for (const s of Object.keys(golden.base.cardio)) for (const [k, v] of Object.entries(golden.base.cardio[s])) assert.deepStrictEqual(c[s][k], v, `${s}.${k}`);
   assert.deepStrictEqual(run('Z2'), golden.z2);
 });
+// The fixtures were captured with the old deload weeks (6, 13, 20, 27). Rows depend only on the phase and whether it is a deload,
+// so each fixture week is checked in the week that now has the same phase and deload status (deloads are weeks 5, 10, 15, 20, 25).
+const GOLDEN_WEEK = { 1: 1, 6: 5, 8: 8, 13: 10, 16: 16, 20: 20, 24: 24, 27: 25 };
 check('liftRows, coreRows and cardioPlan match for every phase and deload week in every session', () => {
   let n = 0;
   for (const [w, sessions] of Object.entries(golden.phase)) for (const [s, want] of Object.entries(sessions)) {
-    const k = weekStart(+w);
+    const k = weekStart(GOLDEN_WEEK[w]);
     assert.deepStrictEqual(run(`liftRows(${J(s)}, ${J(k)})`), want.lifting, `lifting ${s} w${w}`);
     assert.deepStrictEqual(run(`coreRows(${J(s)}, ${J(k)})`), want.core, `core ${s} w${w}`);
     const c = run(`cardioPlan(${J(s)}, ${J(k)})`);
@@ -108,9 +111,9 @@ check('The app renders from config/program once applied, and falls back to built
   assert.deepStrictEqual(run('Z2'), [130, 142]);
 });
 check('Workout and draft ver records the program version that built them', () => {
-  assert.ok(/^7:a3:/.test(run('planVer()')), run('planVer()'));
+  assert.ok(/^7:a3$/.test(run('planVer()')), run('planVer()'));
   vm.runInContext(`applyProgram(ProgramLib.BUILTIN)`, ctx);
-  assert.ok(/^7:b1:/.test(run('planVer()')), run('planVer()'));
+  assert.ok(/^7:b1$/.test(run('planVer()')), run('planVer()'));
 });
 check('An invalid document is ignored and the current program stays', () => {
   const before = run('planVer()');
