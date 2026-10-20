@@ -3081,7 +3081,7 @@ main.addEventListener('click', async e => {
     if (act !== 'sh-check' && proposalSeen) { openReview(proposalSeen.text, proposalSeen.source); return; }
     sheetsUI.busy = true; renderNow();
     try { const f = await SheetsSync.readPlan(true); const src = `${f.name}, updated ${fmtWhen(f.modifiedTime)}`; noteProposalFile(f, src); sheetsUI.busy = false;
-      if (proposalSeen) openReview(f.text, src); else { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:'No proposed plan yet. The file in the "Training Calendar Data" folder has no generatedAt. Ask the training agent to write next-week-plan.json, then check again.' }; renderNow(); } }
+      if (proposalSeen) openReview(f.text, src); else { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:'No proposed plan yet. The Plan tab and next-week-plan.json in the "Training Calendar Data" folder have no generatedAt. Ask the training agent to write the plan, then check again.' }; renderNow(); } }
     catch (err) { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:`Could not read the plan file: ${SheetsSync.error() || err.message}` }; renderNow(); }
     return;
   }

@@ -4,11 +4,18 @@ The training agent writes one file, `next-week-plan.json`, to the **Training Cal
 
 This is the output contract described in section 5 of `training-agent-spec.md`, with the `lifting`, `core`, `meals`, `changeLog` and `approvals` sections filled in. The `cardio` entries are exactly the shapes in the spec.
 
-Keep editing **the same file** rather than creating a new one: the app created it, and with the narrow `drive.file` permission it can only see files it created.
+## Where the agent writes the plan
+
+Write the plan JSON into the **`Plan` tab of the "Training Calendar" Sheet**:
+
+1. Clear `Plan!A:A`.
+2. Write the whole JSON text starting at `Plan!A1`, one chunk per row in column A, each chunk at most 40,000 characters (a cell holds 50,000). The app joins the rows in order, so split anywhere.
+
+Do **not** create a new `next-week-plan.json`: the app only sees files it created, so a new file is invisible to it, and Drive connectors can create files but not overwrite one. The app still reads `next-week-plan.json` (a person can paste a plan into it), and if both hold a plan the one with the later `generatedAt` wins. A Plan tab that is not valid JSON is shown in the app as an error, so a half-written plan is reported rather than ignored. The app creates the `Plan` tab on its next publish and never clears it.
 
 ## What the app does with it
 
-1. **New-proposal badge.** The app reads the file when it opens, when you come back to the tab, and when you tap **Check for proposed plan**. If `generatedAt` is later than the `generatedAt` of every plan you have already applied, a **New** badge appears on the History tab and a banner offers **Review**.
+1. **New-proposal badge.** The app reads the plan (Plan tab, or the file) when it opens, when you come back to the tab, and when you tap **Check for proposed plan**. If `generatedAt` is later than the `generatedAt` of every plan you have already applied, a **New** badge appears on the History tab and a banner offers **Review**.
 2. **Validation first.** The whole file is checked before anything is shown. An unknown field, a value outside the limits below, or a change with no reason rejects the file with a list of what is wrong. Nothing is changed.
 3. **Review screen.** Changes are grouped Lifting, Core, Cardio, Meals. Each shows the old value, the new value and the `reason` from `changeLog`, with **Accept** and **Reject**. Changes tagged `auto` start accepted (this includes stall swaps, which the agent makes on its own); changes tagged `approval` start unaccepted. Every decision can be changed before you apply.
 4. **Apply.** Accepted lifting, core and cardio changes are written to `config/program` (new `version`, `source: "agent"`; see [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md)). Accepted meal changes are written to `config/plan`. A record of what was accepted and rejected is written to the `applied-plans` collection. The newest applied plan can be **undone** from the Applied plans list, which restores the program and meal plan as they were before it.

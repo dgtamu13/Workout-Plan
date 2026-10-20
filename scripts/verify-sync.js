@@ -54,6 +54,8 @@ function backend() {
       }
       return res(200, {});
     }
+    m = /^\/v4\/spreadsheets\/([^/:]+)\/values\/([^/]+)$/.exec(p);
+    if (m) { const s = sheets[m[1]], tab = decodeURIComponent(m[2]).split('!')[0].replace(/^'(.*)'$/, '$1'); if (!s.tabs.find(t => t.title === tab)) return err(400, `Unable to parse range: ${decodeURIComponent(m[2])}`, 'badRequest'); return res(200, { values: (s.values[tab] || []).map(r => [r[0]]) }); }
     m = /^\/v4\/spreadsheets\/([^/:]+)\/values:batchClear$/.exec(p);
     if (m) { for (const rg of body.ranges) delete sheets[m[1]].values[rg.replace(/^'(.*)'$/, '$1')]; return res(200, {}); }
     m = /^\/v4\/spreadsheets\/([^/:]+)\/values:batchUpdate$/.exec(p);
@@ -88,7 +90,7 @@ check('First connect creates the folder, the Sheet inside it, the plan file and 
   assert.strictEqual(S.state(), 'off'); assert.strictEqual(await S.connect(), true); assert.strictEqual(S.state(), 'ok'); assert.ok(S.lastPublished());
   const folder = b.files.find(f => f.mimeType === 'application/vnd.google-apps.folder'), sheet = b.files.find(f => f.mimeType === 'application/vnd.google-apps.spreadsheet'), plan = b.files.find(f => f.name === 'next-week-plan.json');
   assert.strictEqual(folder.name, 'Training Calendar Data'); assert.deepStrictEqual(folder.parents, []); assert.strictEqual(sheet.name, 'Training Calendar'); assert.deepStrictEqual(sheet.parents, [folder.id]); assert.deepStrictEqual(plan.parents, [folder.id]);
-  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan']); assert.ok(t.every(x => x.grid.frozenRowCount === 1), 'header row frozen');
+  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan', 'Plan']); assert.ok(t.filter(x => x.title !== 'Plan').every(x => x.grid.frozenRowCount === 1), 'header row frozen');
   const v = b.sheets[sheet.id].values; assert.deepStrictEqual(v.Workouts, [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', '']]); assert.deepStrictEqual(v.Body[1], ['2026-10-20', 171.5]);
   assert.strictEqual(b.lastBody.valueInputOption, 'RAW', 'text such as =HYPERLINK stays text'); assert.ok(typeof v.Body[1][1] === 'number'); assert.deepStrictEqual(v['Meal Plan'], [['Area', 'Item'], ['Meta', 'last calorie change']]); assert.deepStrictEqual(v.Program[1], ['Meta', 'version']);
   assert.ok(/"schema": "training-calendar-next-week-plan"/.test(plan.content)); assert.deepStrictEqual(plain(S.links()), { sheet: `https://docs.google.com/spreadsheets/d/${sheet.id}/edit`, folder: `https://drive.google.com/drive/folders/${folder.id}` });
@@ -119,6 +121,25 @@ check('Reading the plan file returns the placeholder, then whatever is written i
   const first = await S.readPlan(false); assert.strictEqual(first.name, 'next-week-plan.json'); const ph = JSON.parse(first.text); assert.strictEqual(ph.schema, 'training-calendar-next-week-plan'); assert.ok(!ph.generatedAt, 'the placeholder has no generatedAt, so it never shows as a new proposal');
   const file = b.files.find(f => f.name === 'next-week-plan.json'); file.content = J({ schema: 'training-calendar-next-week-plan', version: 1, generatedAt: '2026-11-02T20:00:00Z' }); file.modified = '2026-10-26T21:00:00Z';
   const next = await S.readPlan(false); assert.strictEqual(next.modifiedTime, '2026-10-26T21:00:00Z'); assert.strictEqual(JSON.parse(next.text).generatedAt, '2026-11-02T20:00:00Z');
+});
+const planJson = (g, extra = {}) => J({ schema: 'training-calendar-next-week-plan', version: 1, generatedAt: g, ...extra });
+check('The agent can write its plan into the Plan tab (split over rows); the app reads it and never clears it', async () => {
+  const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES }); await S.connect();
+  const sheet = Object.values(b.sheets)[0], text = planJson('2026-11-02T20:00:00Z', { note: 'x'.repeat(100) }), mid = Math.floor(text.length / 2);
+  sheet.values.Plan = [[text.slice(0, mid)], [text.slice(mid)]];
+  const r = await S.readPlan(false); assert.strictEqual(r.name, 'Plan tab'); assert.strictEqual(r.text, text); assert.strictEqual(JSON.parse(r.text).generatedAt, '2026-11-02T20:00:00Z');
+  await S.publish(false); assert.deepStrictEqual(sheet.values.Plan, [[text.slice(0, mid)], [text.slice(mid)]], 'a publish does not touch the Plan tab');
+});
+check('Plan tab vs plan file: the later generatedAt wins; an empty Plan tab or an old sheet without one falls back to the file', async () => {
+  const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES }); await S.connect();
+  const sheet = Object.values(b.sheets)[0], file = b.files.find(f => f.name === 'next-week-plan.json');
+  assert.strictEqual((await S.readPlan(false)).name, 'next-week-plan.json', 'empty Plan tab');
+  file.content = planJson('2026-11-09T20:00:00Z'); sheet.values.Plan = [[planJson('2026-11-02T20:00:00Z')]];
+  assert.strictEqual(JSON.parse((await S.readPlan(false)).text).generatedAt, '2026-11-09T20:00:00Z', 'file is newer');
+  file.content = planJson('2026-10-26T20:00:00Z'); assert.strictEqual(JSON.parse((await S.readPlan(false)).text).generatedAt, '2026-11-02T20:00:00Z', 'tab is newer');
+  sheet.values.Plan = [['{"schema": "half written']]; file.content = planJson('2026-10-26T20:00:00Z');
+  assert.strictEqual((await S.readPlan(false)).name, 'Plan tab', 'a broken Plan tab is shown (and reported as invalid JSON), not hidden');
+  sheet.tabs = sheet.tabs.filter(t => t.title !== 'Plan'); assert.strictEqual((await S.readPlan(false)).name, 'next-week-plan.json', 'sheet from before the Plan tab existed');
 });
 check('Without a connection nothing is published; schedule() publishes after a short delay once connected', async () => {
   const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES });

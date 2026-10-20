@@ -6,7 +6,7 @@
   'use strict';
   const CLIENT_ID = '358985473662-1qsq1f7ku4c409uhj7a185rlq241ses0.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
-  const FOLDER_NAME = 'Training Calendar Data', SHEET_NAME = 'Training Calendar', PLAN_FILE = 'next-week-plan.json';
+  const FOLDER_NAME = 'Training Calendar Data', SHEET_NAME = 'Training Calendar', PLAN_FILE = 'next-week-plan.json', PLAN_TAB = 'Plan';
   const TABS = ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan'];
   const STORE_KEY = 'derek-tc-sheets-v1', TOKEN_KEY = 'derek-tc-sheets-token', DRIVE_TOKEN_KEY = 'derek-tc-drive-token';
   const DRIVE = 'https://www.googleapis.com/drive/v3', UPLOAD = 'https://www.googleapis.com/upload/drive/v3', SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -130,6 +130,8 @@
       if ((g.rowCount || 0) < n.rows || (g.columnCount || 0) < n.cols || g.frozenRowCount !== 1)
         requests.push({ updateSheetProperties: { properties: { sheetId: p.sheetId, gridProperties: { rowCount: Math.max(g.rowCount || 0, n.rows), columnCount: Math.max(g.columnCount || 0, n.cols), frozenRowCount: 1 } }, fields: 'gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount' } });
     });
+    // The Plan tab is where the training agent writes its plan (the file cannot be overwritten by Drive connectors). It is never cleared or published over.
+    if (!have.some(x => x.title === PLAN_TAB)) requests.push({ addSheet: { properties: { title: PLAN_TAB, gridProperties: { rowCount: 100, columnCount: 2 } } } });
     if (requests.length) await post(`${SHEETS}/${sheetId}:batchUpdate`, { requests }, interactive);
   }
   const a1 = tab => `'${tab}'`; // quoted so tab names with spaces work in A1 notation
@@ -173,13 +175,24 @@
   }
   function schedule() { if (!ids.linked) return; clearTimeout(timer); timer = setTimeout(() => publish(false), 1500); }
 
-  // The plan file: text plus when it last changed. The placeholder created on first connect is returned like any other file.
+  // The proposed plan, from either place the agent may have written it: the Plan tab of the Sheet (column A, one chunk of the JSON text
+  // per row) or the next-week-plan.json file. If both hold a plan, the one with the later generatedAt wins. Returns text plus when it last changed.
+  const generatedAtOf = text => { try { const t = Date.parse(JSON.parse(text).generatedAt); return Number.isNaN(t) ? null : t; } catch { return null; } };
   async function readPlan(interactive) {
     return withFreshIds(async () => {
       const id = await ensurePlan(interactive);
       const meta = await json(`${DRIVE}/files/${id}?fields=name,modifiedTime`, {}, interactive);
-      const text = await (await api(`${DRIVE}/files/${id}?alt=media`, {}, interactive)).text();
-      return { text, modifiedTime: meta.modifiedTime, name: meta.name, id };
+      const file = { text: await (await api(`${DRIVE}/files/${id}?alt=media`, {}, interactive)).text(), modifiedTime: meta.modifiedTime, name: meta.name, id };
+      let tab = null;
+      try {
+        const sheetId = await ensureSheet(interactive);
+        const v = await json(`${SHEETS}/${sheetId}/values/${encodeURIComponent(`'${PLAN_TAB}'!A:A`)}`, {}, interactive);
+        const text = (v.values || []).map(r => (r && r[0] != null ? String(r[0]) : '')).join('').trim();
+        if (text) { const sm = await json(`${DRIVE}/files/${sheetId}?fields=modifiedTime`, {}, interactive); tab = { text, modifiedTime: sm.modifiedTime, name: `${PLAN_TAB} tab`, id: sheetId }; }
+      } catch (e) { if (!(e instanceof ApiError) || e.status !== 400) throw e; } // 400: the Plan tab does not exist yet
+      if (!tab) return file;
+      const t = generatedAtOf(tab.text), f = generatedAtOf(file.text);
+      return t !== null && f !== null && f > t ? file : tab; // a Plan tab that is not valid JSON is shown, so the problem is reported
     });
   }
   async function connect() {
@@ -197,7 +210,7 @@
   }
 
   root.SheetsSync = {
-    FOLDER_NAME, SHEET_NAME, PLAN_FILE, TABS, SCOPE,
+    FOLDER_NAME, SHEET_NAME, PLAN_FILE, PLAN_TAB, TABS, SCOPE,
     configure: o => { if (o && o.getTables) getTables = o.getTables; },
     state: () => state, error: () => lastError, linked: () => !!ids.linked, lastPublished: () => lastPublished,
     links: () => ({
