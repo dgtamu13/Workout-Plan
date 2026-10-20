@@ -50,6 +50,14 @@ Merging is per record, newest edit wins. Use **Export backup / Import backup** t
 Google sign-in uses an OAuth client ID with the `drive.appdata` scope, authorized for `https://dgtamu13.github.io`.
 The client ID in `docs/drive-sync.js` is public by design. While the Google app is in Testing mode, only listed test users can sign in.
 
+## Cardio records
+
+A cardio record is one exercise: `planned` (HIIT or Zone 2), `machine`, `duration`, `hr`, `maxhr`, `distance`, `rounds`, `level`.
+HIIT records can also carry four optional numbers: `workSec`, `restSec`, `avgWatts` and `hrRec60` (heart-rate drop in the first 60 seconds after the last round).
+Older records without them stay valid. They appear in the workout CSV as **Work (s)**, **Rest (s)**, **Avg Watts** and **HR Recovery 60s** (the last four columns).
+The Progress tab charts average watts per session, compared only within the same machine and work:rest protocol, with a baseline reset wherever either changes.
+The app warns when HIIT rounds exceed 16 or a Zone 2 session passes 60 minutes.
+
 ## Updating the service worker
 
 Bump `CACHE` in `docs/sw.js` whenever you change cached files so installed copies refresh.

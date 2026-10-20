@@ -330,6 +330,43 @@ check('Obsolete code is gone (calibration, MACHINES, unused tab key, newfile.js)
   assert.ok(!('main' in JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))));
 });
 
+console.log('HIIT detail fields');
+check('Protocol seconds come from the plan text, for both HIIT sessions', () => {
+  assert.deepStrictEqual(run(`protocolSecs(CARDIO['PUSH A'].protocol)`), { work: 30, rest: 30 });
+  assert.deepStrictEqual(run(`protocolSecs(CARDIO['PULL A'].protocol)`), { work: 40, rest: 20 });
+  assert.strictEqual(run(`protocolSecs('Zone 2')`), null); assert.strictEqual(run('protocolSecs(undefined)'), null);
+});
+check('Warning when HIIT rounds exceed 16 or Zone 2 passes 60 minutes (and only then)', () => {
+  const w = ex => run(`cardioWarnings(${J(ex)})`).map(x => x.code);
+  assert.deepStrictEqual(w({ planned: 'HIIT', rounds: 16 }), []); assert.deepStrictEqual(w({ planned: 'HIIT', rounds: 17 }), ['hiit-rounds']);
+  assert.deepStrictEqual(w({ planned: 'Zone 2', duration: 60 }), []); assert.deepStrictEqual(w({ planned: 'Zone 2', duration: 61 }), ['z2-duration']);
+  assert.deepStrictEqual(w({ planned: 'Zone 2', rounds: 40, duration: 30 }), [], 'rounds only matter for HIIT');
+  assert.deepStrictEqual(w({ planned: 'HIIT', duration: 90, rounds: 10 }), [], 'duration only matters for Zone 2');
+  assert.deepStrictEqual(w({ planned: 'HIIT', rounds: 20, skipped: true }), [], 'skipped sessions are not flagged');
+  assert.deepStrictEqual(w({ planned: 'HIIT' }), []); assert.deepStrictEqual(w(undefined), []);
+  assert.ok(/17 HIIT rounds is more than 16/.test(run(`cardioWarnings({ planned: 'HIIT', rounds: 17 })[0].msg`)));
+});
+const hx = (date, machine, work, rest, watts, extra = {}) => ({ date, ex: { planned: 'HIIT', machine, workSec: work, restSec: rest, avgWatts: watts, ...extra } });
+check('Watts series: only sessions with watts, oldest first, one setup per machine and work:rest protocol', () => {
+  const s = run(`hiitSeries(${J([hx('2026-10-27', 'Rower', 30, 30, 190), hx('2026-10-21', 'Rower', 30, 30, 180), { date: '2026-10-22', ex: { planned: 'HIIT', machine: 'Rower', rounds: 10 } }, { date: '2026-10-23', ex: { planned: 'Zone 2', avgWatts: 99 } }, hx('2026-10-24', 'Rower', 30, 30, 0), hx('2026-10-25', 'Rower', 30, 30, 200, { skipped: true })])})`);
+  assert.deepStrictEqual(s.points.map(p => [p.date, p.watts]), [['2026-10-21', 180], ['2026-10-27', 190]]);
+  assert.deepStrictEqual(s.combos.map(c => [c.label, c.count]), [['Rower · 30:30', 2]]); assert.deepStrictEqual(s.resets, []);
+});
+check('A change of machine or protocol is a baseline reset; changing back is another', () => {
+  const s = run(`hiitSeries(${J([hx('2026-10-21', 'Rower', 30, 30, 180), hx('2026-10-28', 'Rower', 30, 30, 185), hx('2026-11-04', 'Treadmill', 30, 30, 150), hx('2026-11-11', 'Treadmill', 40, 20, 155), hx('2026-11-18', 'Rower', 30, 30, 190)])})`);
+  assert.deepStrictEqual(s.resets.map(r => [r.date, r.from, r.to]), [['2026-11-04', 'Rower · 30:30', 'Treadmill · 30:30'], ['2026-11-11', 'Treadmill · 30:30', 'Treadmill · 40:20'], ['2026-11-18', 'Treadmill · 40:20', 'Rower · 30:30']]);
+  assert.deepStrictEqual(s.combos.map(c => [c.label, c.count]), [['Rower · 30:30', 3], ['Treadmill · 30:30', 1], ['Treadmill · 40:20', 1]]);
+  assert.strictEqual(s.latestKey, 'Rower|30:30');
+});
+check('Old or incomplete records still group (unknown machine or protocol shows as ?)', () => {
+  const s = run(`hiitSeries(${J([{ date: '2026-10-21', ex: { planned: 'HIIT', avgWatts: 170 } }, hx('2026-10-28', 'Rower', 30, 30, 180)])})`);
+  assert.deepStrictEqual(s.points.map(p => p.label), ['Unknown machine · ?:?', 'Rower · 30:30']); assert.strictEqual(s.resets.length, 1);
+});
+check('CSV: the four new columns are appended after the existing ones with the exact names', () => {
+  assert.ok(/'PR','Work \(s\)','Rest \(s\)','Avg Watts','HR Recovery 60s'\];/.test(html), 'CSV_HEAD ends with the four new columns');
+  assert.ok(/'Muscle Group','e1RM \(lb\)','PR'/.test(html), 'existing columns unchanged');
+});
+
 console.log('Progress ranges');
 const RB = (r, t) => run(`rangeBounds(${J(r)}, ${J(t)})`);
 const RO = (d, t) => run(`rangeOptions(${J(d)}, ${J(t)})`);
