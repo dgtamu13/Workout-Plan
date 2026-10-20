@@ -30,14 +30,20 @@ Open the site on your phone, then **Share → Add to Home Screen** (iOS Safari) 
 A 28-week plan that repeats a 7-day cycle counted from Day 1 (not tied to weekdays): PUSH A, PULL A, LEGS A (hypertrophy), PUSH B, PULL B, LEGS B (strength), then REST.
 Everything derives from the single `START` constant in `docs/index.html`.
 
-| Phase | Weeks | Deload week |
-| --- | --- | --- |
-| 1 Reclaim | 1–6 | 6 |
-| 2 Build | 7–14 | 13 |
-| 3 Lean | 15–22 | 20 |
-| 4 Peak | 23–28 | 27 |
+| Phase | Weeks |
+| --- | --- |
+| 1 Reclaim | 1–6 |
+| 2 Build | 7–14 |
+| 3 Lean | 15–22 |
+| 4 Peak | 23–28 |
+
+Deloads follow the training agent spec: every 5th working week (weeks 5, 10, 15, 20 and 25). A deload week cuts lifting sets, HIIT rounds and Zone 2 time by 40% at the same weights. A pull-forward deload (`deloadWeeks` in `config/program`) is also a deload week and restarts the 5-week count.
 
 `scripts/verify-plan.js` (`npm test`) checks dates, phases, deloads, the plan tables and the progression rules.
+
+### Program document
+
+The exercises, core circuits and cardio prescriptions are data, not code. The app renders from the `config/program` document in the sync store when it exists and is valid, and falls back to the built-in program in `docs/program.js` (which also seeds the document). The phase and deload rules apply on top of it. The backup export includes `config/program` and import restores it. See [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md) for the schema and a full example. `scripts/verify-program.js` checks validation and that the built-in program renders exactly as before.
 
 ## Data
 
