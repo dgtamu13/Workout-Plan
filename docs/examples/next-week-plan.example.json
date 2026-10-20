@@ -1,0 +1,78 @@
+{
+  "schema": "training-calendar-next-week-plan",
+  "version": 1,
+  "generatedAt": "2026-11-02T20:00:00Z",
+  "weekStart": "2026-11-03",
+  "basedOnProgramVersion": 1,
+  "note": "Week 3. Loads up where the top of the range was hit, one stalled movement swapped automatically, a little more cardio, and +100 kcal on training days because the 7-day trend is under 0.1 lb/week.",
+  "lifting": {
+    "PUSH A": [
+      { "name": "Incline DB Press", "targetLb": 55 },
+      { "name": "Cable Lateral Raise" },
+      { "name": "Cable Crossover", "muscleGroup": ["Chest"], "sets": 3, "reps": { "low": 12, "high": 15 }, "rir": { "low": 0, "high": 1 }, "restSec": { "low": 60, "high": 90 }, "progression": "upper", "role": "isolation", "cue": "Low-to-high path, 1 sec squeeze" },
+      { "name": "Machine Shoulder Press" },
+      { "name": "Overhead Cable Extension" },
+      { "name": "Tricep Pushdown" },
+      { "name": "Face Pulls" }
+    ],
+    "LEGS A": [
+      { "name": "Leg Press", "targetLb": 360 },
+      { "name": "Romanian Deadlift" },
+      { "name": "Walking Lunges" },
+      { "name": "Leg Curl" },
+      { "name": "Bulgarian Split Squat" },
+      { "name": "Standing Calf Raise" },
+      { "name": "Seated Calf Raise" }
+    ]
+  },
+  "core": {
+    "A": [
+      { "name": "Cable Crunch", "sets": 3, "target": "18 reps" },
+      { "name": "Hanging Leg Raise", "sets": 3, "target": "15 reps" },
+      { "name": "Serratus Punch (cable)", "sets": 3, "target": "15/side" },
+      { "name": "Plank w/ Shoulder Tap", "sets": 3, "target": "12/side" }
+    ]
+  },
+  "cardio": [
+    { "date": "2026-11-03", "session": "PUSH A", "type": "hiit", "machine": "Rower", "rounds": 12, "workSec": 30, "restSec": 30, "targetAvgWatts": 210 },
+    { "date": "2026-11-05", "session": "LEGS A", "type": "zone2", "durationMin": 35, "hrLow": 136, "hrHigh": 148 }
+  ],
+  "meals": {
+    "targets": { "training": { "kcal": 2600, "p": 200, "f": 65, "c": 304 } },
+    "menus": {
+      "A": {
+        "name": "Chicken & rice / Salmon & potatoes",
+        "items": [
+          { "food": "whey", "slot": "Breakfast", "train": 61, "rest": 61 },
+          { "food": "creatine", "slot": "Breakfast", "train": 5, "rest": 5 },
+          { "food": "egg", "slot": "Breakfast", "train": 150, "rest": 150 },
+          { "food": "dkb", "slot": "Breakfast", "train": 90, "rest": 90 },
+          { "food": "banana", "slot": "Breakfast", "train": 120, "rest": 0 },
+          { "food": "chx_breast", "slot": "Lunch", "train": 165, "rest": 165 },
+          { "food": "rice", "slot": "Lunch", "train": 135, "rest": 65 },
+          { "food": "broccoli", "slot": "Lunch", "train": 150, "rest": 150 },
+          { "food": "oliveoil", "slot": "Lunch", "train": 8, "rest": 12 },
+          { "food": "greek0", "slot": "Snack", "train": 250, "rest": 250 },
+          { "food": "blueberry", "slot": "Snack", "train": 100, "rest": 100 },
+          { "food": "honey", "slot": "Snack", "train": 15, "rest": 0 },
+          { "food": "pb", "slot": "Snack", "train": 16, "rest": 16 },
+          { "food": "salmon", "slot": "Dinner", "train": 170, "rest": 170 },
+          { "food": "potato", "slot": "Dinner", "train": 325, "rest": 210 },
+          { "food": "greenbeans", "slot": "Dinner", "train": 150, "rest": 150 }
+        ]
+      }
+    }
+  },
+  "changeLog": [
+    { "id": "c1", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/PUSH A/Incline DB Press/targetLb"], "reason": "Hit 15 reps on all 4 sets last session. Double progression adds 5 lb (upper body).", "evidence": "2026-10-27: 50 lb × 15/15/15/15 at RIR 1" },
+    { "id": "c2", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/LEGS A/Leg Press/targetLb"], "reason": "Hit the top of 12–15 on all 4 sets. Double progression adds 10 lb (lower body).", "evidence": "2026-10-29: 350 lb × 15/15/15/15" },
+    { "id": "c3", "area": "lifting", "tag": "auto", "kind": "stall-swap", "refs": ["lifting/PUSH A/Pec Deck / Cable Fly", "lifting/PUSH A/Cable Crossover", "lifting/PUSH A/order"], "reason": "Pec Deck / Cable Fly missed the top of the rep range in 3 sessions in a row. Swapped for a movement with the same muscle group and pattern.", "evidence": "10–12 reps on 10/12, 10/13, 11/13 against a top of 15" },
+    { "id": "c4", "area": "core", "tag": "auto", "kind": "progression", "refs": ["core/A/Cable Crunch/target"], "reason": "Every set reached the 15-rep target for two weeks, so the target moves up to 18." },
+    { "id": "c5", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/PUSH A"], "reason": "Target 200 W was hit at 10 rounds with max HR and 60 s recovery in their normal range. Adding 2 rounds and raising the watts target.", "evidence": "2026-10-27: 204 W avg, max HR 171, HR recovery 28" },
+    { "id": "c6", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/LEGS A"], "reason": "Zone 2 progression: +5 minutes, HR stayed inside 136–148.", "evidence": "2026-10-29: 30 min at 141 bpm avg" },
+    { "id": "c7", "area": "meals", "tag": "approval", "kind": "calories", "refs": ["meals"], "reason": "7-day average weight is up 0.06 lb/week, under the 0.1 lb/week floor for two weeks, and there are 7 extra cardio minutes. Training-day calories +100 (carbs only), protein unchanged.", "evidence": "7-day average 174.1 → 174.2 lb" }
+  ],
+  "approvals": [
+    { "changeId": "c7", "question": "Raise training-day calories from 2500 to 2600 kcal (carbs 280 g to 304 g)?" }
+  ]
+}

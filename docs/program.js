@@ -123,6 +123,7 @@
           if (e.role !== undefined && !(e.role in ROLES)) bad(q + '.role', 'must be compound, primary, secondary or isolation');
           if (e.perSide !== undefined && e.perSide !== 'arm' && e.perSide !== 'leg') bad(q + '.perSide', 'must be "arm" or "leg"');
           if (e.cue !== undefined && typeof e.cue !== 'string') bad(q + '.cue', 'must be text');
+          if (e.targetLb !== undefined && !(typeof e.targetLb === 'number' && e.targetLb > 0 && e.targetLb <= 2000)) bad(q + '.targetLb', 'must be a weight in lb, 1–2000');
         });
       }
       for (const s of Object.keys(doc.sessions)) if (!SESSIONS.includes(s)) bad(`sessions["${s}"]`, 'unknown session');
@@ -179,7 +180,7 @@
     for (const s of SESSIONS) out[s] = doc.sessions[s].exercises.map(e => [
       e.name,
       e.methods && e.methods.length ? e.methods.join(' + ') : `RIR ${fmtRange(e.rir)}`,
-      String(e.sets), fmtRange(e.reps, e.perSide), fmtRest(e.restSec), e.cue || '', ROLES[e.role || 'compound'],
+      String(e.sets), fmtRange(e.reps, e.perSide), fmtRest(e.restSec), (e.cue || '') + (e.targetLb ? `${e.cue ? '. ' : ''}Target load: ${e.targetLb} lb` : ''), ROLES[e.role || 'compound'],
     ]);
     return out;
   }

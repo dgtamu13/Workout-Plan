@@ -111,6 +111,7 @@ button, input, select, textarea { font-family:inherit; }
 .tabbar .wrap { display:flex; align-items:center; gap:2px; overflow-x:auto; }
 .tab { background:none; border:none; color:var(--fg2); font-size:.85rem; font-weight:600; padding:12px 12px 10px; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
 .tab[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); }
+.tab .newbadge { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:99px; background:var(--accent); color:var(--bg); font-size:.58rem; letter-spacing:.06em; vertical-align:middle; }
 .tab .pip { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--green); margin-left:6px; vertical-align:middle; }
 .tab-date { margin-left:auto; padding-left:12px; font-size:.75rem; color:var(--fg2); white-space:nowrap; }
 
@@ -426,6 +427,27 @@ svg.e-dark, svg.e-light { flex:none; }
   .cal-toggle[aria-expanded="true"] { color:var(--accent); border-color:var(--accent); }
 }
 
+/* Plan proposal review */
+.chg { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer; align-items:start; }
+.chg .detail { font-family:var(--mono); font-size:.74rem; color:var(--fg2); margin-top:3px; line-height:1.5; overflow-wrap:anywhere; }
+.chg .from { color:var(--red); text-decoration:line-through; text-decoration-thickness:1px; }
+.chg .to { color:var(--green); }
+.chg { grid-template-columns:minmax(0,1fr) auto; cursor:default; }
+.chg .why { font-size:.76rem; color:var(--fg2); margin-top:6px; line-height:1.45; }
+.chg.rej .to { color:var(--fg3); text-decoration:line-through; text-decoration-thickness:1px; }
+.chg .seg { display:flex; gap:4px; align-self:start; }
+.chg .seg .mini.on { background:var(--green); color:var(--bg); border-color:var(--green); }
+.chg .seg .mini.on.rej { background:var(--red); border-color:var(--red); color:var(--bg); }
+.chg-grp { font-family:var(--disp); font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; margin:18px 0 0; padding-top:8px; border-top:2px solid var(--border); }
+.plan-bad { color:var(--red); }
+.plan-ready { border-color:var(--accent); }
+details.applied { border-top:1px solid var(--border); padding:6px 0; font-size:.78rem; }
+details.applied summary { cursor:pointer; color:var(--fg2); }
+.plan-list { margin:6px 0 0; padding-left:18px; font-size:.76rem; line-height:1.5; }
+.chg-sec { font-family:var(--disp); font-size:.66rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--fg2); margin:14px 0 2px; }
+.sheet-links a { color:var(--accent); }
+.plan-errors { color:var(--red); font-size:.78rem; line-height:1.5; margin:8px 0 0; padding-left:18px; }
+
 /* Drive sync */
 #syncBtn[data-state="ok"] { color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,transparent); }
 #syncBtn[data-state="syncing"] { color:var(--accent); }
@@ -561,6 +583,8 @@ body.resting .main { padding-bottom:120px; }
 <script src="vendor/chart.umd.js"></script>
 <script src="drive-sync.js"></script>
 <script src="program.js"></script>
+<script src="plan-proposal.js"></script>
+<script src="sheets-sync.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
 const START = new Date(2026, 9, 20); // Day 1 (PUSH A): Tue Oct 20, 2026
@@ -797,12 +821,13 @@ let sessionStart = null;
 let _clockIv = null;
 let swapMemory = {};
 let fatigueLog = {};
-const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue' };
+let appliedPlans = {}; // applied-plans collection: id -> record of what was accepted and rejected from each next-week-plan.json
+const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue', applied:'derek-tc-applied-plans-v1' };
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
-swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {});
+swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {}); appliedPlans = lsGet(LS.applied, {});
 const cachedProgram = lsGet(PROGRAM_LS, null); if (cachedProgram) applyProgram(cachedProgram);
 if (['#lift','#core','#cardio','#body','#meals','#progress','#history'].includes(location.hash)) tab = location.hash.slice(1);
 
@@ -1457,13 +1482,13 @@ function _doRender() {
     const t = b.dataset.tab;
     b.setAttribute('aria-selected', String(t === tab));
     const done = (TYPES[t] && workouts[`${k}_${t}`]) || (t === 'body' && bodyLog[k]) || (t === 'meals' && mealLog[k]);
-    b.innerHTML = TAB_LABEL[t] + (done ? '<span class="pip" title="Saved"></span>' : '');
+    b.innerHTML = TAB_LABEL[t] + (done ? '<span class="pip" title="Saved"></span>' : '') + (t === 'history' && window.PlanProposal && newProposalReady() ? '<span class="newbadge" title="A new proposed plan is ready">New</span>' : '');
   });
   document.getElementById('tabDate').textContent = (tab === 'history' || tab === 'progress') ? '' : selected.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
   charts.forEach(c => { try { c.destroy(); } catch {} }); charts = []; chartQueue = [];
   _prevTab = tab;
   const main = document.getElementById('main');
-  main.innerHTML = tab === 'history' ? renderHistory() : tab === 'progress' ? renderProgress() : tab === 'body' ? renderBody() : tab === 'meals' ? renderMeals() : renderDay(tab);
+  main.innerHTML = (tab !== 'history' && window.PlanProposal ? proposalBanner('plan-open') : '') + (tab === 'history' ? renderHistory() : tab === 'progress' ? renderProgress() : tab === 'body' ? renderBody() : tab === 'meals' ? renderMeals() : renderDay(tab));
   drawCharts();
 }
 
@@ -1749,7 +1774,9 @@ function renderHistory() {
       </div>
     </details>`).join('');
   return `<div class="dayhead"><h2>Workout history</h2></div>
+    ${proposalBanner('plan-review')}
     ${syncCard()}
+    ${sheetsCard()}
     <div class="filters">
       <label><span class="field-label">Type</span><select id="hfType" data-act="hf" data-f="type">
         ${[['all','All'],['lift','Lifting'],['core','Core'],['cardio','Cardio']].map(([v,l]) => `<option value="${v}" ${hf.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1765,9 +1792,10 @@ function renderHistory() {
 // ═══ CSV ════════════════════════════════════════════════════════════
 const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s'];
 const cq = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-function toCSV(list) {
+const TYPE_ORDER = { lift:0, core:1, cardio:2 };
+function workoutRows(list) {
   const rows = [CSV_HEAD];
-  for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date))) {
+  for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date) || (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9))) {
     for (const e of w.exercises) {
       const base = [w.date, w.session, TYPES[w.type], e.name, e.planned, e.skipped ? 'Yes' : 'No'];
       if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60]);
@@ -1780,14 +1808,17 @@ function toCSV(list) {
       }
     }
   }
-  return rows.map(r => r.map(cq).join(',')).join('\r\n');
+  return rows;
 }
-function bodyCSV() {
+const rowsToCSV = rows => rows.map(r => r.map(cq).join(',')).join('\r\n');
+function toCSV(list) { return rowsToCSV(workoutRows(list)); }
+function bodyRows() {
   const rows = [['Date','Weight (lb)','Body Fat (%)','Muscle (%)','Waist (in)','Lean Mass (lb)','Fat Mass (lb)','7-day Avg Weight (lb)','Notes']];
   const all = bodyEntries();
   all.forEach(e => rows.push([e.date, e.weight, e.bf, e.muscle, e.waist, leanOf(e) ? r1(leanOf(e)) : '', fatOf(e) ? r1(fatOf(e)) : '', avg7(all, e.date) ? r1(avg7(all, e.date)) : '', e.notes]));
-  return rows.map(r => r.map(cq).join(',')).join('\r\n');
+  return rows;
 }
+function bodyCSV() { return rowsToCSV(bodyRows()); }
 function csvPanel() {
   return csvFallback ? `<div class="csv-panel"><div class="submit-row"><span class="note">${esc(csvFallback.msg)}</span><button class="mini" data-act="copy">Copy CSV</button><button class="mini" data-act="closecsv">Close</button></div><textarea id="csvText" readonly>${esc(csvFallback.csv)}</textarea></div>` : '';
 }
@@ -1938,7 +1969,7 @@ main.addEventListener('click', async e => {
     const energy = +banner.querySelector('[data-cq="energy"]').value;
     if (!sleep || !soreness || !energy) { alert('Please fill in all three fields.'); return; }
     fatigueLog[k] = { sleep, soreness, energy, done:true };
-    lsSet(LS.fatigue, fatigueLog);
+    lsSet(LS.fatigue, fatigueLog); sheetsPublishSoon();
     renderNow(); return;
   }
   if (act === 'add') { const ex = curDraft().exercises[i]; const last = ex.sets[ex.sets.length - 1] || {}; ex.sets.push(tab === 'lift' ? { w:last.w ?? null, r:null } : { v:null, w:last.w ?? null }); touch(); renderNow(); return; }
@@ -2292,7 +2323,7 @@ async function submitBody() {
   const k = keyOf(selected), id = `${k}_body`, d = getBodyDraft(k);
   if (!BODY_F.some(f => num(d[f]) !== null)) { status[id] = { cls:'err', text:'Enter at least one number first.' }; renderNow(); return; }
   const doc = { date:k, weight:num(d.weight), bf:num(d.bf), muscle:num(d.muscle), waist:num(d.waist), notes:d.notes || '', submittedAt:new Date().toISOString() };
-  bodyLog[k] = doc; lsSet(LS2.body, bodyLog);
+  bodyLog[k] = doc; lsSet(LS2.body, bodyLog); sheetsPublishSoon();
   drafts[id] = stripMeta(clone(doc)); saveDraftsSoon();
   await saveDoc('body', k, doc, id);
 }
@@ -2300,7 +2331,7 @@ async function submitMeals() {
   const k = keyOf(selected), id = `${k}_meals`, d = getMealDraft(k);
   const t = sumMac(d.items, it => it.on);
   const doc = { ...clone(d), date:k, totals:{ kcal:Math.round(t.kcal), p:r1(t.p), f:r1(t.f), c:r1(t.c) }, target: clone(plan.targets[d.dayType]), submittedAt:new Date().toISOString() };
-  mealLog[k] = doc; lsSet(LS2.meals, mealLog);
+  mealLog[k] = doc; lsSet(LS2.meals, mealLog); sheetsPublishSoon();
   drafts[id] = stripMeta(clone(doc)); saveDraftsSoon();
   await saveDoc('meals', k, doc, id);
 }
@@ -2706,6 +2737,7 @@ function subscribeNew() {
     if (PROGRAM.source !== 'built-in') { applyProgram(ProgramLib.BUILTIN); try { localStorage.removeItem(PROGRAM_LS); } catch {} afterSnap(); }
     if (!seeded) { seeded = true; db.doc('config/program').set(ProgramLib.BUILTIN).catch(() => {}); }
   }, () => {});
+  sub('applied-plans', () => appliedPlans, m => { appliedPlans = m; }, LS.applied);
 }
 function afterSnap() {
   renderCalendar();
@@ -2719,7 +2751,7 @@ async function submit() {
   const k = keyOf(selected), id = `${k}_${tab}`, d = drafts[id];
   if (!d) return;
   const doc = { ...clone(d), submittedAt:new Date().toISOString() };
-  workouts[id] = doc; lsSet(LS.w, workouts);
+  workouts[id] = doc; lsSet(LS.w, workouts); sheetsPublishSoon();
   drafts[id] = stripMeta(clone(doc)); saveDraftsSoon();
   status[id] = { cls:'dirty', text:'Submitting…' };
   const stEl2 = document.getElementById('submitStatus');
@@ -2810,6 +2842,224 @@ document.addEventListener('change', async e => {
   try { alert(importBackup(await e.target.files[0].text())); }
   catch (err) { alert('Could not import: ' + err.message); }
   e.target.value = '';
+});
+
+// ═══ Google Sheet publishing + proposed plans ═══════════════════════
+const MEAL_HEAD = ['Date','Day Type','Menu','Meal','Food','Planned (g)','Logged (g)','Eaten','Calories','Protein (g)','Fat (g)','Carbs (g)','Day Calories Eaten','Day Calorie Target','Notes'];
+const FATIGUE_HEAD = ['Date','Session','Sleep (1-5)','Soreness (1-5, 5 = very sore)','Energy (1-5)','Readiness (1-5)','Readiness Flag'];
+function mealRows() {
+  const rows = [MEAL_HEAD];
+  Object.values(mealLog).sort((a, b) => a.date.localeCompare(b.date)).forEach(m => {
+    const items = m.items || [], tot = m.totals || {}, tk = m.target?.kcal ?? plan?.targets?.[m.dayType]?.kcal ?? '';
+    const day = [tot.kcal ?? '', tk];
+    if (!items.length) { rows.push([m.date, m.dayType, m.menu, '', '', '', '', '', '', '', '', '', ...day, m.notes || '']); return; }
+    items.forEach((it, j) => {
+      const f = foods[it.food], x = f ? mac(it.food, it.g) : null;
+      rows.push([m.date, m.dayType, m.menu, it.slot, f ? f.name : it.food, it.planned ?? '', it.g ?? '', it.on ? 'Yes' : 'No',
+        x ? Math.round(x.kcal) : '', x ? r1(x.p) : '', x ? r1(x.f) : '', x ? r1(x.c) : '', ...(j === 0 ? day : ['', '']), j === 0 ? (m.notes || '') : '']);
+    });
+  });
+  return rows;
+}
+function fatigueRows() {
+  const rows = [FATIGUE_HEAD];
+  Object.keys(fatigueLog).sort().filter(k => fatigueLog[k] && fatigueLog[k].done).forEach(k => {
+    const f = fatigueLog[k], r = readiness(k);
+    rows.push([k, sessionFor(k) || '', f.sleep, f.soreness, f.energy, r ? r1(r.score) : '', r ? (r.low ? 'Low' : r.high ? 'High' : 'Normal') : '']);
+  });
+  return rows;
+}
+// The four tabs of the Google Sheet. Workouts and Body use exactly the columns of the CSV exports.
+function sheetTables() {
+  const pad = rows => rows.map(r => r.length >= rows[0].length ? r : [...r, ...Array(rows[0].length - r.length).fill('')]);
+  return { Workouts: pad(workoutRows(Object.values(workouts))), Body: bodyRows(), Meals: mealRows(), Fatigue: fatigueRows() };
+}
+const sheetsPublishSoon = () => { try { window.SheetsSync?.schedule(); } catch {} };
+const sheetsOn = () => !!(window.SheetsSync && window.PlanProposal && !window.claude?.use);
+
+let sheetsUI = { review:null, decisions:{}, errors:[], warnings:[], info:'', source:'', paste:false, busy:false };
+let proposalSeen = null; // newest file read from Drive: { generatedAt, text, source }
+let proposalCheckedAt = 0;
+let _lastSheetsState = null;
+if (window.SheetsSync) {
+  SheetsSync.configure({ getTables: sheetTables });
+  SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; afterSnap(); });
+}
+const reviewCtx = () => ({ program: PROGRAM, plan, foods });
+const appliedList = () => Object.values(appliedPlans);
+// True when the file in the Drive folder has a generatedAt later than every plan applied so far.
+const newProposalReady = () => !!(proposalSeen && window.PlanProposal && PlanProposal.isNewer(proposalSeen.generatedAt, appliedList()));
+function noteProposalFile(f, source) {
+  let g = null;
+  try { const o = JSON.parse(f.text); if (o && typeof o.generatedAt === 'string' && !Number.isNaN(Date.parse(o.generatedAt))) g = o.generatedAt; } catch {}
+  proposalSeen = g ? { generatedAt: g, text: f.text, source } : null;
+  proposalCheckedAt = Date.now();
+  return proposalSeen;
+}
+// Look for a new proposal in the background (silent: no sign-in popup). Runs on open, when the tab returns, and at most every 5 minutes.
+function checkProposalQuietly(force) {
+  if (!sheetsOn() || !SheetsSync.linked() || SheetsSync.state() === 'needs-auth') return;
+  if (!force && Date.now() - proposalCheckedAt < 300000) return;
+  proposalCheckedAt = Date.now();
+  SheetsSync.readPlan(false).then(f => { const before = newProposalReady(); noteProposalFile(f, `${f.name}, updated ${fmtWhen(f.modifiedTime)}`); if (newProposalReady() !== before) afterSnap(); }).catch(() => {});
+}
+setTimeout(() => checkProposalQuietly(true), 2500);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkProposalQuietly(); });
+
+function openReview(text, source) {
+  const res = PlanProposal.review(text, reviewCtx());
+  sheetsUI = { review:null, decisions:{}, errors:[], warnings:res.warnings || [], info:'', source, paste:false, busy:false };
+  if (!res.ok) sheetsUI.errors = res.errors;
+  else if (!res.changes.length) sheetsUI.info = 'This proposal matches your current plan, so there is nothing to change.';
+  else { sheetsUI.review = res; sheetsUI.decisions = PlanProposal.defaults(res.changes); }
+  renderNow();
+}
+function applyReview() {
+  const r = sheetsUI.review; if (!r) return;
+  const accepted = r.changes.filter(c => sheetsUI.decisions[c.id]).map(c => c.id);
+  const res = PlanProposal.apply(reviewCtx(), r.proposal, r.changes, accepted);
+  if (!res.ok) { sheetsUI.errors = ['These changes would make an invalid program, so nothing was applied: ' + res.errors.slice(0, 3).join('; ')]; renderNow(); return; }
+  if (res.program) { applyProgram(res.program); lsSet(PROGRAM_LS, res.program); if (db) db.doc('config/program').set(res.program).catch(() => {}); }
+  if (res.plan) { plan = res.plan; lsSet(LS2.plan, plan); if (db) db.doc('config/plan').set(plan).catch(() => {}); }
+  appliedPlans[res.record.id] = res.record; lsSet(LS.applied, appliedPlans);
+  if (db) db.collection('applied-plans').doc(res.record.id).set(res.record).catch(() => {});
+  // Untouched drafts were built from the old plan: drop them so they rebuild. Drafts with entries are kept.
+  Object.keys(drafts).forEach(id => {
+    const d = drafts[id]; if (!d) return;
+    if (id.endsWith('_meals')) { if (!d.userSet && !(d.items || []).some(i => i.on) && !mealLog[d.date]) delete drafts[id]; }
+    else if (/_(lift|core|cardio)$/.test(id) && !hasData(d) && !workouts[id]) delete drafts[id];
+  });
+  saveDraftsSoon();
+  const a = res.record.accepted.length, n = res.record.rejected.length;
+  sheetsUI = { review:null, decisions:{}, errors:[], warnings:[], info:`Applied ${a} change${a === 1 ? '' : 's'}${n ? ` and rejected ${n}` : ''}.${res.program ? ` Program is now version ${res.program.version} (agent).` : ''}`, source:'', paste:false, busy:false };
+  renderCalendar(); renderNow();
+}
+// Undo the newest applied plan: put back the program and meal plan as they were. The program goes to the next version number, source "manual".
+function undoPlan(id) {
+  const r = appliedPlans[id]; if (!r || !r.before || r.undoneAt) return;
+  const newest = appliedList().filter(x => x.before && !x.undoneAt).sort((a, b) => b.appliedAt.localeCompare(a.appliedAt))[0];
+  if (newest !== r) { sheetsUI.info = 'Undo the newer plan first.'; renderNow(); return; }
+  if (!confirm('Undo this plan? The program and meal plan go back to how they were before it. Logged workouts are not changed.')) return;
+  if (r.before.program) { const doc = { ...clone(r.before.program), version: PROGRAM.version + 1, source: 'manual' }; applyProgram(doc); lsSet(PROGRAM_LS, doc); if (db) db.doc('config/program').set(doc).catch(() => {}); }
+  if (r.before.plan) { plan = r.before.plan; lsSet(LS2.plan, plan); if (db) db.doc('config/plan').set(plan).catch(() => {}); }
+  const rec = { ...r, undoneAt: new Date().toISOString() }; delete rec.before;
+  appliedPlans[id] = rec; lsSet(LS.applied, appliedPlans);
+  if (db) db.collection('applied-plans').doc(id).set(rec).catch(() => {});
+  Object.keys(drafts).forEach(k => { const d = drafts[k]; if (!d) return; if (k.endsWith('_meals')) { if (!d.userSet && !(d.items || []).some(i => i.on) && !mealLog[d.date]) delete drafts[k]; } else if (/_(lift|core|cardio)$/.test(k) && !hasData(d) && !workouts[k]) delete drafts[k]; });
+  saveDraftsSoon();
+  sheetsUI = { ...sheetsUI, info: `Undid the plan for the week of ${shortDate(r.weekStart)}.`, review: null, errors: [] };
+  renderCalendar(); renderNow();
+}
+const fmtWhen = t => new Date(t).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+const GROUPS = [['lifting', 'Lifting'], ['core', 'Core'], ['cardio', 'Cardio'], ['meals', 'Meals']];
+function changeRow(c) {
+  const on = !!sheetsUI.decisions[c.id];
+  const detail = c.from !== null && c.to !== null ? `<span class="from">${esc(c.from)}</span> → <span class="to">${esc(c.to)}</span>` : c.to !== null ? `<span class="to">${esc(c.to)}</span>` : `<span class="from">${esc(c.from)}</span>`;
+  const tag = c.tag === 'auto' ? `<span class="tag tempo">${c.swap ? 'Auto swap' : 'Auto'}</span>` : `<span class="tag pause">${c.swap ? 'Swap · needs approval' : 'Needs approval'}</span>`;
+  return `<div class="chg ${on ? 'acc' : 'rej'}"><div>${tag} <b>${esc(c.label)}</b>${c.forced ? ' <span class="note">(approval is required for this kind of change)</span>' : ''}
+      <div class="detail">${detail}</div>
+      <div class="why"><b>Why:</b> ${esc(c.reason)}${c.evidence ? `<br><span class="note">${esc(c.evidence)}</span>` : ''}</div></div>
+    <div class="seg" role="group" aria-label="Decision for ${esc(c.label)}"><button class="mini ${on ? 'on' : ''}" data-act="chg-set" data-id="${esc(c.id)}" data-v="1" aria-pressed="${on}">Accept</button><button class="mini ${on ? '' : 'on rej'}" data-act="chg-set" data-id="${esc(c.id)}" data-v="0" aria-pressed="${!on}">Reject</button></div></div>`;
+}
+function reviewPanel() {
+  const u = sheetsUI, r = u.review;
+  const errs = u.errors.length ? `<ul class="plan-errors">${u.errors.slice(0, 12).map(e => `<li>${esc(e)}</li>`).join('')}${u.errors.length > 12 ? `<li>…and ${u.errors.length - 12} more</li>` : ''}</ul>` : '';
+  if (!r) return `${u.info ? `<div class="note" style="margin-top:12px">${esc(u.info)}</div>` : ''}${u.errors.length ? `<div class="note plan-bad" style="margin-top:12px"><b>This plan file was not accepted, and nothing was changed.</b> Fix these and check again:</div>${errs}` : ''}`;
+  const p = r.proposal, acc = r.changes.filter(c => u.decisions[c.id]).length, rej = r.changes.length - acc, done = !!appliedPlans[p.id];
+  const groups = GROUPS.map(([g, name]) => {
+    const rows = r.changes.filter(c => c.group === g); if (!rows.length) return '';
+    const secs = []; rows.forEach(c => { let s = secs.find(x => x.name === (c.group === 'core' ? `Circuit ${c.section}` : c.section)); if (!s) secs.push(s = { name: c.group === 'core' ? `Circuit ${c.section}` : c.section, rows: [] }); s.rows.push(c); });
+    return `<h4 class="chg-grp">${name} <span class="note">${rows.length} change${rows.length === 1 ? '' : 's'}</span></h4>${secs.map(s => `<div class="chg-sec">${esc(s.name)}</div>${s.rows.map(changeRow).join('')}`).join('')}`;
+  }).join('');
+  const asks = p.approvals.length ? `<div class="note" style="margin-top:8px"><b>Needs your approval:</b> ${p.approvals.map(a => esc(a.question)).join(' · ')}</div>` : '';
+  return `<div class="review">
+    <div class="field-label">Proposed plan${u.source ? ' · ' + esc(u.source) : ''}</div>
+    <h3 style="margin:6px 0 4px;font-size:.95rem">Week of ${esc(longDate(p.weekStart))}</h3>
+    <div class="note">Generated ${esc(fmtWhen(p.generatedAt))}. Auto changes start accepted and approval changes start unaccepted; change any of them.</div>
+    ${p.note ? `<p class="note" style="line-height:1.5;margin:8px 0 0">${esc(p.note)}</p>` : ''}${asks}
+    ${done ? `<div class="note" style="margin-top:8px;color:var(--yellow)">This plan was already applied on ${esc(fmtWhen(appliedPlans[p.id].appliedAt))}.</div>` : ''}
+    ${u.warnings.length ? `<div class="note" style="margin-top:8px">${esc(u.warnings.slice(0, 4).join('; '))}</div>` : ''}${errs}
+    ${groups}
+    <div class="export-row" style="margin:14px 0 0">
+      <button class="primary" data-act="chg-apply" ${done ? 'disabled' : ''} style="margin-left:0">Apply: ${acc} accepted, ${rej} rejected</button>
+      <button class="mini" data-act="chg-all">Accept all</button><button class="mini" data-act="chg-none">Reject all</button><button class="mini" data-act="chg-cancel">Close</button>
+    </div>
+  </div>`;
+}
+function appliedList2() {
+  const rows = appliedList().sort((a, b) => (b.appliedAt || '').localeCompare(a.appliedAt || ''));
+  if (!rows.length) return '';
+  const li = c => `<li><b>${esc(c.label)}</b> <span class="from">${esc(c.from ?? '')}</span>${c.from !== null && c.to !== null ? ' → ' : ''}<span class="to">${esc(c.to ?? '')}</span><br><span class="note">${esc(c.reason || '')}</span></li>`;
+  const newest = rows.find(r => r.before && !r.undoneAt);
+  return `<div class="field-label" style="margin-top:14px">Applied plans</div>${rows.map(r => `<details class="applied"><summary>Week of ${esc(shortDate(r.weekStart))} · ${r.accepted.length} accepted, ${r.rejected.length} rejected · ${esc(fmtWhen(r.appliedAt))}${r.programVersion ? ` · program v${r.programVersion}` : ''}${r.undoneAt ? ' · undone' : ''}</summary>${newest === r ? `<div class="export-row" style="margin:6px 0"><button class="mini danger" data-act="plan-undo" data-id="${esc(r.id)}">Undo this plan</button></div>` : ''}
+    ${r.accepted.length ? `<div class="field-label">Accepted</div><ul class="plan-list">${r.accepted.map(li).join('')}</ul>` : ''}${r.rejected.length ? `<div class="field-label">Rejected</div><ul class="plan-list">${r.rejected.map(li).join('')}</ul>` : ''}</details>`).join('')}`;
+}
+// Shown at the top of History when a newer proposal is waiting.
+function proposalBanner(act) {
+  if (!newProposalReady() || (sheetsUI.review && sheetsUI.review.proposal.generatedAt === proposalSeen.generatedAt)) return '';
+  return `<div class="card plan-ready"><div class="submit-row"><span class="note" style="flex:1;min-width:0"><b>A new proposed plan is ready</b> (generated ${esc(fmtWhen(proposalSeen.generatedAt))}).</span><button class="primary" data-act="${act}" style="margin-left:0">Review</button></div></div>`;
+}
+function sheetsCard() {
+  if (!sheetsOn()) return '';
+  const S = SheetsSync, st = S.state(), L = S.links(), when = S.lastPublished();
+  const a = (u, t) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${t}</a>` : '';
+  const links = [a(L.sheet, 'Open the Sheet'), a(L.folder, 'Open the folder')].filter(Boolean).join(' · ');
+  const msg = st === 'off' ? `Not connected. Connect to publish your workouts, body, meals and check-ins to a Google Sheet in a Drive folder called "${S.FOLDER_NAME}" after every submit.`
+    : st === 'connecting' ? 'Connecting to Google…' : st === 'publishing' ? 'Publishing to the Sheet…'
+    : st === 'ready' ? 'Connected. The Sheet updates after every submit.'
+    : st === 'ok' ? `Published ${when ? fmtWhen(when) : ''}. The Sheet updates after every submit.`
+    : st === 'needs-auth' ? (S.error() || 'Google sign-in needed to resume publishing. Tap Reconnect.')
+    : st === 'offline' ? 'Offline. The Sheet updates after your next submit.'
+    : st === 'api-disabled' ? (S.error() || 'A Google API needs to be turned on for this project.') : `Could not publish: ${S.error() || 'unknown error'}`;
+  const connected = S.linked() && st !== 'off';
+  return `<div class="card"><h3>Google Sheet &amp; plan proposals</h3>
+    <div class="submit-row" style="margin-bottom:8px"><span class="note">${esc(msg)}</span></div>
+    ${links ? `<div class="note sheet-links" style="margin-bottom:10px">${links}</div>` : ''}
+    <div class="export-row" style="margin:0 0 8px">
+      ${connected ? `${st === 'needs-auth' ? '<button class="primary" data-act="sh-connect" style="margin-left:0">Reconnect</button>' : ''}<button class="mini" data-act="sh-publish">Publish now</button><button class="mini" data-act="sh-disconnect">Disconnect</button>`
+        : `<button class="primary" data-act="sh-connect" style="margin-left:0">Connect Google Sheet</button>`}
+    </div>
+    <div class="export-row" style="margin:0">
+      ${connected ? `<button class="mini" data-act="sh-check" ${sheetsUI.busy ? 'disabled' : ''}>${sheetsUI.busy ? 'Checking…' : 'Check for proposed plan'}</button>` : ''}
+      <button class="mini" data-act="sh-file">Load plan file</button><button class="mini" data-act="sh-paste">Paste plan JSON</button>
+      <input type="file" id="planFile" accept="application/json,.json" hidden>
+    </div>
+    ${sheetsUI.paste ? `<textarea id="planText" placeholder="Paste next-week-plan.json here" style="width:100%;min-height:120px;margin-top:10px;font-family:var(--mono);font-size:.72rem"></textarea><div class="export-row" style="margin:8px 0 0"><button class="primary" data-act="sh-paste-go" style="margin-left:0">Review changes</button><button class="mini" data-act="sh-paste-close">Cancel</button></div>` : ''}
+    ${reviewPanel()}
+    ${appliedList2()}
+  </div>`;
+}
+main.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'sh-connect') { SheetsSync.connect(); return; }
+  if (act === 'sh-publish') { SheetsSync.publish(true); return; }
+  if (act === 'sh-disconnect') { SheetsSync.disconnect(); proposalSeen = null; renderNow(); return; }
+  if (act === 'sh-check' || act === 'plan-review' || act === 'plan-open') {
+    if (act === 'plan-open') { tab = 'history'; renderNow(); }
+    if (act !== 'sh-check' && proposalSeen) { openReview(proposalSeen.text, proposalSeen.source); return; }
+    sheetsUI.busy = true; renderNow();
+    try { const f = await SheetsSync.readPlan(true); const src = `${f.name}, updated ${fmtWhen(f.modifiedTime)}`; noteProposalFile(f, src); sheetsUI.busy = false;
+      if (proposalSeen) openReview(f.text, src); else { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:'No proposed plan yet. The file in the "Training Calendar Data" folder has no generatedAt. Ask the training agent to write next-week-plan.json, then check again.' }; renderNow(); } }
+    catch (err) { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:`Could not read the plan file: ${SheetsSync.error() || err.message}` }; renderNow(); }
+    return;
+  }
+  if (act === 'sh-file') { document.getElementById('planFile').click(); return; }
+  if (act === 'sh-paste') { sheetsUI.paste = true; renderNow(); document.getElementById('planText')?.focus(); return; }
+  if (act === 'sh-paste-close') { sheetsUI.paste = false; renderNow(); return; }
+  if (act === 'sh-paste-go') { openReview(document.getElementById('planText').value, 'pasted'); return; }
+  if (act === 'chg-set') { const on = b.dataset.v === '1', ch = sheetsUI.review.changes.find(c => c.id === b.dataset.id); sheetsUI.decisions[b.dataset.id] = on; if (ch && ch.partner) sheetsUI.decisions[ch.partner] = on; // the two halves of a swap go together
+    const y = window.scrollY; renderNow(); window.scrollTo(0, y); return; }
+  if (act === 'chg-all') { sheetsUI.review.changes.forEach(c => { sheetsUI.decisions[c.id] = true; }); renderNow(); return; }
+  if (act === 'chg-none') { sheetsUI.review.changes.forEach(c => { sheetsUI.decisions[c.id] = false; }); renderNow(); return; }
+  if (act === 'chg-cancel') { sheetsUI = { ...sheetsUI, review:null, decisions:{}, info:'', errors:[] }; renderNow(); return; }
+  if (act === 'chg-apply') { applyReview(); return; }
+  if (act === 'plan-undo') { undoPlan(b.dataset.id); return; }
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'planFile' || !e.target.files[0]) return;
+  const f = e.target.files[0]; e.target.value = '';
+  openReview(await f.text(), f.name);
 });
 
 async function connect() {

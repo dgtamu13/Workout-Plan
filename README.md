@@ -45,6 +45,13 @@ Deloads follow the training agent spec: every 5th working week (weeks 5, 10, 15,
 
 The exercises, core circuits and cardio prescriptions are data, not code. The app renders from the `config/program` document in the sync store when it exists and is valid, and falls back to the built-in program in `docs/program.js` (which also seeds the document). The phase and deload rules apply on top of it. The backup export includes `config/program` and import restores it. See [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md) for the schema and a full example. `scripts/verify-program.js` checks validation and that the built-in program renders exactly as before.
 
+
+### Google Sheet and weekly plan proposals
+
+**Data & sync → Google Sheet** (History tab) publishes workouts, body, meals and check-ins to a Sheet in a Drive folder called "Training Calendar Data" after every submit. It needs the Google Sheets API turned on for the Cloud project and the `drive.file` and `spreadsheets` scopes on the consent screen, then tap Connect.
+
+The training agent writes `next-week-plan.json` to the same folder. The app checks for it on open and when you return to the tab; a **New** badge appears on History when its `generatedAt` is newer than the last plan you applied. The review screen shows each change by lifting, core, cardio and meals with the old value, new value and the agent's reason, and you accept or reject each one. Changes tagged `auto` start accepted, `approval` ones start unaccepted. Applying writes `config/program` and `config/plan` and records what was accepted and rejected in `applied-plans`. The file is validated first (unknown fields, HIIT rounds over 16, Zone 2 over 60 minutes, protein changes and calorie changes over 150 kcal are rejected). The format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); `scripts/verify-proposal.js` tests it.
+
 ## Data
 
 Everything is saved on the device first (browser `localStorage`), so the app works offline.
