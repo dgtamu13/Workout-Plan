@@ -18,12 +18,12 @@ const plain = v => JSON.parse(JSON.stringify(v)); // VM arrays/objects -> local 
 function backend() {
   const files = [], sheets = {}, log = [];
   let n = 0;
-  const b = { files, sheets, log, fail: null, status: {}, tokenCalls: 0, rejectSilent: false, expireToken: 0 };
+  const b = { files, sheets, log, urls: [], fail: null, status: {}, tokenCalls: 0, rejectSilent: false, expireToken: 0 };
   const res = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
   const err = (status, message, reason) => res(status, { error: { code: status, message, status: reason, errors: [{ reason }] } });
   const id = () => 'id' + (++n);
   b.fetch = async (url, init = {}) => {
-    const method = init.method || 'GET'; log.push(`${method} ${url.replace(/\?.*/, '').replace('https://www.googleapis.com', '').replace('https://sheets.googleapis.com', '')}`);
+    const method = init.method || 'GET'; b.urls.push(url); log.push(`${method} ${url.replace(/\?.*/, '').replace('https://www.googleapis.com', '').replace('https://sheets.googleapis.com', '')}`);
     if (b.fail && b.fail(url, method)) return b.fail(url, method);
     if (/Bearer expired/.test(init.headers.Authorization)) return err(401, 'Invalid Credentials', 'authError');
     const u = new URL(url), p = u.pathname, body = init.body && typeof init.body === 'string' && init.headers['Content-Type'] === 'application/json' ? JSON.parse(init.body) : null;
@@ -129,6 +129,15 @@ check('The agent can write its plan into the Plan tab (split over rows); the app
   sheet.values.Plan = [[text.slice(0, mid)], [text.slice(mid)]];
   const r = await S.readPlan(false); assert.strictEqual(r.name, 'Plan tab'); assert.strictEqual(r.text, text); assert.strictEqual(JSON.parse(r.text).generatedAt, '2026-11-02T20:00:00Z');
   await S.publish(false); assert.deepStrictEqual(sheet.values.Plan, [[text.slice(0, mid)], [text.slice(mid)]], 'a publish does not touch the Plan tab');
+});
+check('The Plan tab is dated by its generatedAt, read with raw values, and a quiet background check does not change the publish state', async () => {
+  const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES }); await S.connect();
+  Object.values(b.sheets)[0].values.Plan = [[planJson('2026-11-02T20:00:00Z')]];
+  const r = await S.readPlan(false); assert.strictEqual(r.modifiedTime, '2026-11-02T20:00:00.000Z');
+  assert.ok(b.log.some(l => /values\/.*Plan/.test(l)) && /UNFORMATTED_VALUE/.test(b.urls.find(u => /values\/.*Plan/.test(u))), 'asks for unformatted values');
+  b.fail = () => ({ ok: false, status: 500, json: async () => ({ error: { message: 'Backend Error' } }) });
+  const before = S.state(); await assert.rejects(S.readPlan(false, true)); assert.strictEqual(S.state(), before, 'quiet failure leaves the state alone');
+  await assert.rejects(S.readPlan(false)); assert.strictEqual(S.state(), 'error', 'an explicit check reports it');
 });
 check('Plan tab vs plan file: the later generatedAt wins; an empty Plan tab or an old sheet without one falls back to the file', async () => {
   const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES }); await S.connect();

@@ -9,7 +9,7 @@ This is the output contract described in section 5 of `training-agent-spec.md`, 
 Write the plan JSON into the **`Plan` tab of the "Training Calendar" Sheet**:
 
 1. Clear `Plan!A:A`.
-2. Write the whole JSON text starting at `Plan!A1`, one chunk per row in column A, each chunk at most 40,000 characters (a cell holds 50,000). The app joins the rows in order, so split anywhere.
+2. Write the whole JSON text starting at `Plan!A1`, one chunk per row in column A, each chunk at most 40,000 characters (a cell holds 50,000). The app joins the rows in order and reads the raw cell text. Split at a comma or brace, never in the middle of a number, so that no chunk is all digits.
 
 Do **not** create a new `next-week-plan.json`: the app only sees files it created, so a new file is invisible to it, and Drive connectors can create files but not overwrite one. The app still reads `next-week-plan.json` (a person can paste a plan into it), and if both hold a plan the one with the later `generatedAt` wins. A Plan tab that is not valid JSON is shown in the app as an error, so a half-written plan is reported rather than ignored. The app creates the `Plan` tab on its next publish and never clears it.
 
@@ -38,7 +38,7 @@ The "Training Calendar" Sheet in the same folder is updated after every submit. 
 | `version` | `1` | Required. |
 | `generatedAt` | ISO date-time | Required. Used to tell whether this plan is newer than the last one applied. Write a new value every time the agent produces a new plan. |
 | `weekStart` | `YYYY-MM-DD` | Required. First day of the week the plan is for. Cardio dates must fall within the 7 days from here. |
-| `basedOnProgramVersion` | whole number (optional) | The `config/program` version the agent read. |
+| `basedOnProgramVersion` | whole number (optional) | The `config/program` version the agent read. If it differs from the app's current version, the review shows a warning (the old values it shows may not be the ones the agent saw). |
 | `note` | text, up to 2000 (optional) | Summary shown at the top of the review. |
 | `deload` | object (optional) | A pull-forward deload. See below. |
 | `lifting` | object (optional) | Per-session exercise lists. |
@@ -89,7 +89,7 @@ HIIT (push and pull days only):
 | `date` | `YYYY-MM-DD` | Required, inside the week. |
 | `session` | session name | Required. |
 | `type` | `"hiit"` | A push or pull session that is currently Zone 2 can switch to HIIT. The switch is a separate change that always needs your approval. |
-| `machine` | text (optional) | Changing machine or the work:rest protocol resets the Progress watts baseline. |
+| `machine` | text (optional) | A plain machine name (letters, numbers, spaces and `. / & ( ) -`, up to 40 characters). Changing machine or the work:rest protocol resets the Progress watts baseline. |
 | `rounds` | whole number | Required. **At most 16.** |
 | `workSec` | whole number | Required. 5–600. |
 | `restSec` | whole number | Required. 0–600. |
@@ -115,7 +115,7 @@ Limits checked against the current plan:
 
 - **Protein is never changed.** `p` must equal the current value, or be left out.
 - **Each calorie target may move by at most 150 kcal** from its current value.
-- **2-week lockout.** A `kcal` change is rejected if a calorie target change was applied less than 14 days before `generatedAt` (a plan where you rejected the calorie change, or that you undid, does not count). The error says when the lockout ends. Carbs, fat and menu changes are still allowed during the lockout; leave `kcal` unchanged or out of the file.
+- **2-week lockout.** A `kcal` change is rejected if a calorie target change was applied less than 14 days before `generatedAt` or before today, whichever is later (a future-dated file cannot skip it) (a plan where you rejected the calorie change, or that you undid, does not count). The error says when the lockout ends. Carbs, fat and menu changes are still allowed during the lockout; leave `kcal` unchanged or out of the file.
 
 Every meal change needs your approval (see below), whatever the file's tag says.
 
@@ -178,7 +178,7 @@ Entries the agent tags `approval` start unaccepted. In addition, the app **alway
 | Zone 2 duration | At most 60 minutes, with `hrLow`/`hrHigh` inside 136–148 bpm. |
 | Protein | Must not change. |
 | Calories | A change of at most 150 kcal per target (training and rest are separate targets), and not within 14 days of the last applied calorie change. |
-| Stall swaps | One exercise out and one in, at most one swap per session per week. The new exercise must have the same first `muscleGroup` and the same `pattern` as the one it replaces. Your logs must show the removed exercise missing the top of its rep range (every set) in each of its last 3 logged sessions. |
+| Stall swaps | One exercise out and one in, at most one swap per session per week. The new exercise must have the same first `muscleGroup` and the same `pattern` as the one it replaces. Your logs must show the removed exercise, in that same session, missing the top of its rep range in each of its last 3 logged sessions (deload-week and low-readiness sessions are not counted, the same as the app's own progression). |
 | HIIT sessions | At most 4 HIIT sessions a week after the change. |
 | Reasons | Every change needs a `changeLog` entry. |
 | Approvals | Every `approval` entry needs a matching `approvals` item. |

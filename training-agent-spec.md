@@ -34,7 +34,7 @@ The agent runs once a week. It reads the Training Calendar Sheet, decides next w
   - Same muscle group (first `muscleGroup`) and same movement pattern (`pattern`). The new exercise must send `pattern`.
   - Max one swap per session per week, one exercise out and one in.
   - Logged in the change log, with the three sessions as `evidence`.
-  - The app checks all of the above against the workout log and rejects the file otherwise: it needs 3 logged sessions of the exercise in a row where at least one set fell short of the top of the range, and not a single one that reached it on every set.
+  - The app checks all of the above against the workout log and rejects the file otherwise: it needs 3 logged sessions of the exercise in that same session (for example Face Pulls in PUSH A, not in PULL A) in a row where at least one set fell short of the top of the range. Deload-week and low-readiness sessions are not counted.
   - The swap is pre-accepted in the review. The user can reject it, or undo the whole plan after applying it.
 - Any other added or removed exercise needs approval.
 - Match logged sessions by the `Exercise` column. If the user swapped an exercise on the day (`Exercise` differs from `Planned Exercise`), that session does not count for the program exercise and is not a stall.
@@ -43,7 +43,7 @@ The agent runs once a week. It reads the Training Calendar Sheet, decides next w
 
 - Driver: 7-day average bodyweight (not single readings; bioimpedance body fat is not a driver).
 - Adjust calories in steps of +/-100-150 kcal, with a **2-week lockout** between changes. Protein stays fixed.
-  - The app rejects a plan that changes a calorie target by more than 150 kcal, or changes `kcal` less than 14 days after the last applied calorie change. The `Meal Plan` tab's `Meta` rows give the date of the last change and when the lockout ends. During the lockout, leave `kcal` as it is; carbs, fat and menu changes are still allowed.
+  - The app rejects a plan that changes a calorie target by more than 150 kcal, or changes `kcal` less than 14 days after the last applied calorie change (measured to the later of the file's `generatedAt` and today). The `Meal Plan` tab's `Meta` rows give the date of the last change and when the lockout ends. During the lockout, leave `kcal` as it is; carbs, fat and menu changes are still allowed.
   - The app rejects any change to protein.
 - Flags (can fire any time, independent of lockout):
   - 7-day trend gaining > 0.5 lb/week -> flag: trim calories.
