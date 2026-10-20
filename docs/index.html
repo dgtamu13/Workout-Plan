@@ -562,7 +562,7 @@ body.resting .main { padding-bottom:120px; }
 <script src="drive-sync.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
-const START = new Date(2026, 9, 14); // Day 1 (PUSH A): Wed Oct 14, 2026
+const START = new Date(2026, 9, 20); // Day 1 (PUSH A): Tue Oct 20, 2026
 const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
@@ -904,7 +904,7 @@ function cardioPlan(session, k) {
 }
 
 // ═══ Session + drafts ═══════════════════════════════════════════════
-const PLAN_VER = 4; // bump when the plan tables change so untouched drafts rebuild
+const PLAN_VER = 5; // bump when the plan tables change so untouched drafts rebuild
 function sessionFor(k) {
   if (sessOverride[k]) return sessOverride[k];
   for (const t of ['lift','core','cardio']) if (workouts[`${k}_${t}`]?.session) return workouts[`${k}_${t}`].session;
