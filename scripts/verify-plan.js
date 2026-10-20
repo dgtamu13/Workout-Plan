@@ -298,6 +298,28 @@ check('Deload weeks are flagged in the banner and styled as deloads', () => {
   for (const w of [6, 13, 20, 27]) { const b = banner(weekStart(w)); assert.ok(/class="phase deload"/.test(b) && /Deload week/.test(b) && !/Next deload/.test(b), 'week ' + w); }
   assert.ok(!/class="phase deload"/.test(banner(weekStart(5))));
 });
+check('Core and Cardio banners show the same week/phase title and next deload', () => {
+  for (const type of ['core', 'cardio']) {
+    const b = run(`phaseBanner(${J(weekStart(9))}, ${J(type)})`);
+    assert.ok(/Week 9 of 28 · Phase 2 Build/.test(b) && /Next deload: week 13 \(Jan 6 to Jan 12\)/.test(b), type + ': ' + b);
+    assert.ok(!/Intensity:/.test(b) && !/1RM/.test(b), type + ' should not show lifting intensity');
+  }
+});
+check('Cardio banner numbers match the cardio plan in every phase', () => {
+  const cb = w => run(`phaseBanner(${J(weekStart(w))}, 'cardio')`), cp = (s, w) => run(`cardioPlan(${J(s)}, ${J(weekStart(w))})`);
+  assert.ok(/10 rounds/.test(cb(2)) && cp('PUSH A', 2).maxRounds === 10 && cp('LEGS A', 2).duration === 30 && cp('PUSH B', 2).duration === 25 && /25–30 minutes/.test(cb(2)));
+  assert.ok(/12 rounds on Push A/.test(cb(8)) && cp('PUSH A', 8).maxRounds === 12 && cp('PULL A', 8).maxRounds === 10);
+  assert.ok(/35 minutes/.test(cb(16)) && cp('LEGS A', 16).duration === 35 && cp('PUSH A', 16).maxRounds === 12);
+  assert.ok(/10 rounds/.test(cb(24)) && /30 minutes/.test(cb(24)) && cp('LEGS A', 24).duration === 30 && cp('PUSH B', 24).duration === 30 && cp('PUSH A', 24).maxRounds === 10);
+});
+check('Deload banners on Core and Cardio match the deload numbers', () => {
+  const dl = weekStart(6);
+  assert.ok(/class="phase deload"/.test(run(`phaseBanner(${J(dl)}, 'core')`)) && /2 per exercise/.test(run(`phaseBanner(${J(dl)}, 'core')`)));
+  assert.ok(run(`coreRows('PUSH A', ${J(dl)})`).every(r => r[1] === '2'));
+  const c = run(`phaseBanner(${J(dl)}, 'cardio')`);
+  assert.ok(/class="phase deload"/.test(c) && /6 rounds/.test(c) && /18 minutes/.test(c));
+  assert.strictEqual(run(`cardioPlan('PUSH A', ${J(dl)})`).rounds, 6); assert.strictEqual(run(`cardioPlan('LEGS A', ${J(dl)})`).duration, 18);
+});
 check('After the last deload there is no "next deload" line', () => assert.ok(!/Next deload/.test(banner(weekStart(28)))));
 check('No banner outside the program (before Day 1 or after week 28)', () => {
   assert.strictEqual(banner(D(-1)), ''); assert.strictEqual(banner(D(196)), '');
