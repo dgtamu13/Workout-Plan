@@ -36,36 +36,36 @@ const info = k => run(`programInfo(${J(k)})`);
 const addDays = (k, n) => run(`addDays(${J(k)}, ${n})`);
 const rows = (s, k) => run(`liftRows(${J(s)}, ${J(k)})`);
 const D = n => addDays(weekStart(1), n);
-const weekStart = w => addDays('2026-10-14', (w - 1) * 7);
+const weekStart = w => addDays('2026-10-20', (w - 1) * 7);
 const logLift = (date, name, sets, session = 'PULL B') => run(`workouts[${J(date + '_lift')}] = { date:${J(date)}, type:'lift', session:${J(session)}, exercises:[{ name:${J(name)}, planned:${J(name)}, skipped:false, sets:${J(sets)} }] };`);
 const clearLogs = () => run('workouts = {}');
 const sets = (w, reps) => reps.map(r => ({ w, r }));
 
 console.log('Dates, rotation, phases');
-check('2026-10-14 is Week 1, Day 1, PUSH A, Phase 1', () => {
-  const i = info('2026-10-14');
+check('2026-10-20 is Week 1, Day 1, PUSH A, Phase 1', () => {
+  const i = info('2026-10-20');
   assert.deepStrictEqual([i.status, i.week, i.day, i.session, i.phase.n, i.deload], ['active', 1, 1, 'PUSH A', 1, false]);
 });
-check('2026-10-20 is REST; 2026-10-21 is PUSH A in Week 2', () => {
-  assert.strictEqual(info('2026-10-20').session, 'REST');
-  const i = info('2026-10-21'); assert.strictEqual(i.session, 'PUSH A'); assert.strictEqual(i.week, 2);
+check('2026-10-26 is REST; 2026-10-27 is PUSH A in Week 2', () => {
+  assert.strictEqual(info('2026-10-26').session, 'REST');
+  const i = info('2026-10-27'); assert.strictEqual(i.session, 'PUSH A'); assert.strictEqual(i.week, 2);
 });
 check('Week 1 rotation matches the table', () => {
   const want = ['PUSH A', 'PULL A', 'LEGS A', 'PUSH B', 'PULL B', 'LEGS B', 'REST'];
-  want.forEach((s, d) => assert.strictEqual(info(addDays('2026-10-14', d)).session, s));
+  want.forEach((s, d) => assert.strictEqual(info(addDays('2026-10-20', d)).session, s));
 });
 check('Before Day 1 is not-started; after Week 28 is complete', () => {
-  assert.strictEqual(info('2026-10-13').status, 'not-started');
-  assert.strictEqual(info('2027-04-27').status, 'active');
-  assert.strictEqual(info('2027-04-28').status, 'complete');
-  assert.strictEqual(run('plannedSession(new Date(2027, 3, 28))'), null);
-  assert.strictEqual(run('plannedSession(new Date(2026, 9, 13))'), null);
+  assert.strictEqual(info('2026-10-19').status, 'not-started');
+  assert.strictEqual(info('2027-05-03').status, 'active');
+  assert.strictEqual(info('2027-05-04').status, 'complete');
+  assert.strictEqual(run('plannedSession(new Date(2027, 4, 4))'), null);
+  assert.strictEqual(run('plannedSession(new Date(2026, 9, 19))'), null);
 });
-check('Program ends 2027-04-27 (196 days)', () => {
-  assert.strictEqual(run('programEnd()'), '2027-04-27');
+check('Program ends 2027-05-03 (196 days)', () => {
+  assert.strictEqual(run('programEnd()'), '2027-05-03');
   assert.strictEqual(run('PROGRAM_WEEKS * 7'), 196);
 });
-const PH = [[1, 'Reclaim', '2026-10-14', '2026-11-24'], [2, 'Build', '2026-11-25', '2027-01-19'], [3, 'Lean', '2027-01-20', '2027-03-16'], [4, 'Peak', '2027-03-17', '2027-04-27']];
+const PH = [[1, 'Reclaim', '2026-10-20', '2026-11-30'], [2, 'Build', '2026-12-01', '2027-01-25'], [3, 'Lean', '2027-01-26', '2027-03-22'], [4, 'Peak', '2027-03-23', '2027-05-03']];
 check('Phase boundaries fall on the table dates', () => {
   PH.forEach(([n, name, from, to]) => {
     assert.strictEqual(info(from).phase.n, n); assert.strictEqual(info(from).phase.name, name);
@@ -74,10 +74,10 @@ check('Phase boundaries fall on the table dates', () => {
     assert.strictEqual(info(addDays(from, -1)).phase.n, n === 1 ? 1 : n - 1);
   });
 });
-const DL = { 6: ['2026-11-18', '2026-11-24'], 13: ['2027-01-06', '2027-01-12'], 20: ['2027-02-24', '2027-03-02'], 27: ['2027-04-14', '2027-04-20'] };
+const DL = { 6: ['2026-11-24', '2026-11-30'], 13: ['2027-01-12', '2027-01-18'], 20: ['2027-03-02', '2027-03-08'], 27: ['2027-04-20', '2027-04-26'] };
 check('Weeks 6 / 13 / 20 / 27 are deloads with the exact date ranges', () => {
   const seen = {};
-  for (let d = 0; d < 196; d++) { const k = addDays('2026-10-14', d), i = info(k); if (i.deload) (seen[i.week] ||= []).push(k); }
+  for (let d = 0; d < 196; d++) { const k = addDays('2026-10-20', d), i = info(k); if (i.deload) (seen[i.week] ||= []).push(k); }
   assert.deepStrictEqual(Object.keys(seen).map(Number), [6, 13, 20, 27]);
   for (const [w, [a, b]] of Object.entries(DL)) { assert.strictEqual(seen[w][0], a); assert.strictEqual(seen[w][seen[w].length - 1], b); assert.strictEqual(seen[w].length, 7); }
 });
@@ -93,10 +93,10 @@ check('Every exercise has sets, rep range, rest and a cue in every week', () => 
 });
 check('Phase 1 tables match the plan (set counts)', () => {
   const want = { 'PUSH A': [4, 4, 3, 3, 3, 3, 2], 'PULL A': [4, 4, 3, 3, 3, 3, 3], 'LEGS A': [4, 3, 3, 4, 3, 4, 3], 'PUSH B': [5, 4, 3, 3, 3], 'PULL B': [4, 4, 4, 3, 3], 'LEGS B': [5, 3, 4, 3, 3] };
-  for (const s of SESS) assert.deepStrictEqual(rows(s, '2026-10-14').map(r => +r[2]), want[s], s);
+  for (const s of SESS) assert.deepStrictEqual(rows(s, '2026-10-20').map(r => +r[2]), want[s], s);
 });
 check('Phase 1 strength primaries run at RIR 2 (clean 5, no grinding)', () => {
-  assert.strictEqual(rows('PUSH B', '2026-10-18')[0][1], 'RIR 2');
+  assert.strictEqual(rows('PUSH B', '2026-10-24')[0][1], 'RIR 2');
 });
 check('Phase 2: +1 set on the first two compounds per hypertrophy day, supersets begin', () => {
   const k = weekStart(8);
@@ -163,7 +163,7 @@ check('Cardio by phase: HIIT rounds, Zone 2 minutes', () => {
   assert.deepStrictEqual([c('PUSH B', 2).duration, c('PUSH B', 16).duration, c('PUSH B', 24).duration], [25, 25, 30]);
 });
 check('Core circuits match the plan', () => {
-  const names = s => run(`coreRows(${J(s)}, '2026-10-14')`).map(r => r[0]);
+  const names = s => run(`coreRows(${J(s)}, '2026-10-20')`).map(r => r[0]);
   assert.deepStrictEqual(names('PUSH A'), ['Cable Crunch', 'Hanging Leg Raise', 'Serratus Punch (cable)', 'Plank w/ Shoulder Tap']);
   assert.deepStrictEqual(names('PULL B'), ['Landmine Rotation', 'Cable Woodchop', 'Side Plank w/ Hip Dip', 'Pallof Press']);
   assert.deepStrictEqual(names('LEGS B'), ['Hanging Tuck-to-Straight Leg Raise', 'Ab Wheel', 'Dead Bug', 'Dragon Flag Negative']);
@@ -173,14 +173,14 @@ console.log('Progression');
 const rec = (name, p, session, k) => run(`liftRec(${J(name)}, ${J(p)}, ${J(session)}, ${J(k)})`);
 const ROW = ['Barbell Bent-Over Row', 'RIR 1', '4', '6–8', '2–3 min'];
 check('Example: Row 135×8 ×4 (range 6–8) predicts 140 × 4 sets at 8, 8, 7, 6', () => {
-  clearLogs(); logLift('2026-10-22', ROW[0], sets(135, [8, 8, 8, 8]));
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-29');
+  clearLogs(); logLift('2026-10-28', ROW[0], sets(135, [8, 8, 8, 8]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-04');
   assert.deepStrictEqual(r.targets, [{ w: 140, r: 8 }, { w: 140, r: 8 }, { w: 140, r: 7 }, { w: 140, r: 6 }]);
   assert.strictEqual(r.status.cls, 'up');
 });
 check('Not all sets at the top: hold the weight, +1 rep per set capped at the top', () => {
-  clearLogs(); logLift('2026-10-22', ROW[0], sets(135, [8, 7, 7, 6]));
-  assert.deepStrictEqual(rec(ROW[0], ROW, 'PULL B', '2026-10-29').targets.map(t => [t.w, t.r]), [[135, 8], [135, 8], [135, 8], [135, 7]]);
+  clearLogs(); logLift('2026-10-28', ROW[0], sets(135, [8, 7, 7, 6]));
+  assert.deepStrictEqual(rec(ROW[0], ROW, 'PULL B', '2026-11-04').targets.map(t => [t.w, t.r]), [[135, 8], [135, 8], [135, 8], [135, 7]]);
 });
 check('Increments: +5 lb upper body, +10 lb lower body', () => {
   assert.strictEqual(run("liftInc('PUSH A', 'Cable Lateral Raise')"), 5);
@@ -190,13 +190,13 @@ check('Increments: +5 lb upper body, +10 lb lower body', () => {
   assert.strictEqual(run("liftInc('LEGS B', 'Deficit RDL')"), 10);
 });
 check('Stalled for two sessions: +0.5 lb micro-load', () => {
-  clearLogs(); logLift('2026-10-15', ROW[0], sets(135, [7, 7, 6, 6])); logLift('2026-10-22', ROW[0], sets(135, [7, 7, 6, 6]));
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-29');
+  clearLogs(); logLift('2026-10-21', ROW[0], sets(135, [7, 7, 6, 6])); logLift('2026-10-28', ROW[0], sets(135, [7, 7, 6, 6]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-04');
   assert.strictEqual(r.micro, true); assert.deepStrictEqual(r.targets.map(t => t.w), [135.5, 135.5, 135.5, 135.5]);
 });
 check('All targets stay on 0.5 lb steps', () => {
-  clearLogs(); logLift('2026-10-22', ROW[0], sets(135.5, [8, 8, 8, 8]));
-  rec(ROW[0], ROW, 'PULL B', '2026-10-29').targets.forEach(t => assert.strictEqual((t.w * 2) % 1, 0));
+  clearLogs(); logLift('2026-10-28', ROW[0], sets(135.5, [8, 8, 8, 8]));
+  rec(ROW[0], ROW, 'PULL B', '2026-11-04').targets.forEach(t => assert.strictEqual((t.w * 2) % 1, 0));
 });
 check('Weight inputs accept 0.5 lb steps', () => {
   assert.ok(!/id="lw-[^>]*step="2\.5"/.test(html) && /id="lw-[^>]*step="0\.5"/.test(html));
@@ -204,9 +204,9 @@ check('Weight inputs accept 0.5 lb steps', () => {
 });
 check('First session: hypertrophy aims for ~3–4 RIR; strength a clean 5 at ~2 RIR; old bests are rebuild targets', () => {
   clearLogs();
-  const h = rec('Incline DB Press', ['Incline DB Press', 'RIR 1–2', '4', '10–15', '60–90 sec'], 'PUSH A', '2026-10-14');
+  const h = rec('Incline DB Press', ['Incline DB Press', 'RIR 1–2', '4', '10–15', '60–90 sec'], 'PUSH A', '2026-10-20');
   assert.ok(/3–4 reps in the tank/.test(h.why)); assert.strictEqual(h.last, null); assert.ok(h.targets.every(t => t.w === null && t.r === 10));
-  const s = rec('Barbell Bench Press', rows('PUSH B', '2026-10-17')[0], 'PUSH B', '2026-10-17');
+  const s = rec('Barbell Bench Press', rows('PUSH B', '2026-10-23')[0], 'PUSH B', '2026-10-23');
   assert.ok(/clean 5 reps/.test(s.why) && /200 lb/.test(s.why) && /rebuild target/.test(s.why) && /155 lb/.test(s.why));
   assert.ok(s.targets.every(t => t.r === 5));
 });
@@ -254,33 +254,33 @@ check('HIIT progression: +1 round per session up to the phase cap', () => {
 console.log('Readiness check-in');
 const checkin = (k, sleep, soreness, energy) => run(`fatigueLog[${J(k)}] = { sleep:${sleep}, soreness:${soreness}, energy:${energy}, done:true }`);
 check('Low readiness (avg 2 or below): today\'s weights drop 10%, rounded to 2.5 lb', () => {
-  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-22', ROW[0], sets(135, [7, 7, 6, 6]));
-  checkin('2026-10-29', 2, 4, 2); // soreness 4 counts as 2, so the average is 2
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-29');
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-28', ROW[0], sets(135, [7, 7, 6, 6]));
+  checkin('2026-11-04', 2, 4, 2); // soreness 4 counts as 2, so the average is 2
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-04');
   assert.strictEqual(r.fatigue, 'low'); assert.ok(r.targets.every(t => t.w === 122.5), J(r.targets));
 });
 check('High readiness (avg 4+): weights unchanged, push note added', () => {
-  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-22', ROW[0], sets(135, [7, 7, 6, 6]));
-  checkin('2026-10-29', 5, 1, 4);
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-29');
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-28', ROW[0], sets(135, [7, 7, 6, 6]));
+  checkin('2026-11-04', 5, 1, 4);
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-04');
   assert.strictEqual(r.fatigue, 'high'); assert.ok(r.targets.every(t => t.w === 135)); assert.ok(/push for the top/.test(r.why));
 });
 check('Soreness counts against readiness (5 = very sore)', () => {
-  run('fatigueLog = {}'); checkin('2026-10-29', 3, 5, 2); // (3 + 1 + 2) / 3 = 2
-  assert.strictEqual(run("readiness('2026-10-29').low"), true);
-  checkin('2026-10-29', 3, 1, 2); // (3 + 5 + 2) / 3 = 3.3
-  assert.strictEqual(run("readiness('2026-10-29').low"), false);
+  run('fatigueLog = {}'); checkin('2026-11-04', 3, 5, 2); // (3 + 1 + 2) / 3 = 2
+  assert.strictEqual(run("readiness('2026-11-04').low"), true);
+  checkin('2026-11-04', 3, 1, 2); // (3 + 5 + 2) / 3 = 3.3
+  assert.strictEqual(run("readiness('2026-11-04').low"), false);
 });
 check('No check-in: targets unchanged', () => {
-  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-22', ROW[0], sets(135, [7, 7, 6, 6]));
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-10-29');
+  clearLogs(); run('fatigueLog = {}'); logLift('2026-10-28', ROW[0], sets(135, [7, 7, 6, 6]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-04');
   assert.strictEqual(r.fatigue, undefined); assert.ok(r.targets.every(t => t.w === 135));
 });
 check('A low-readiness session is ignored when setting the next targets', () => {
   clearLogs(); run('fatigueLog = {}');
-  logLift('2026-10-22', ROW[0], sets(135, [8, 8, 8, 8]));
-  checkin('2026-10-29', 1, 5, 1); logLift('2026-10-29', ROW[0], sets(122.5, [8, 8, 8, 8]));
-  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-05');
+  logLift('2026-10-28', ROW[0], sets(135, [8, 8, 8, 8]));
+  checkin('2026-11-04', 1, 5, 1); logLift('2026-11-04', ROW[0], sets(122.5, [8, 8, 8, 8]));
+  const r = rec(ROW[0], ROW, 'PULL B', '2026-11-11');
   assert.deepStrictEqual(r.targets.map(t => t.w), [140, 140, 140, 140]);
   run('fatigueLog = {}');
 });
@@ -289,10 +289,10 @@ console.log('Lifting banner');
 const banner = k => run(`phaseBanner(${J(k)})`);
 check('Banner shows week, phase and name, with the next deload', () => {
   const b = banner(weekStart(1));
-  assert.ok(/Week 1 of 28 · Phase 1 Reclaim/.test(b) && /Next deload: week 6/.test(b) && /Nov 18 to Nov 24/.test(b) && /65–70% 1RM/.test(b), b);
-  assert.ok(/Week 9 of 28 · Phase 2 Build/.test(banner(weekStart(9))) && /Next deload: week 13 \(Jan 6 to Jan 12\)/.test(banner(weekStart(9))));
+  assert.ok(/Week 1 of 28 · Phase 1 Reclaim/.test(b) && /Next deload: week 6/.test(b) && /Nov 24 to Nov 30/.test(b) && /65–70% 1RM/.test(b), b);
+  assert.ok(/Week 9 of 28 · Phase 2 Build/.test(banner(weekStart(9))) && /Next deload: week 13 \(Jan 12 to Jan 18\)/.test(banner(weekStart(9))));
   assert.ok(/Phase 3 Lean/.test(banner(weekStart(16))) && /Rest-pause/.test(banner(weekStart(16))) && /wave loading/.test(banner(weekStart(16))));
-  assert.ok(/Week 24 of 28 · Phase 4 Peak/.test(banner(weekStart(24))) && /Next deload: week 27 \(Apr 14 to Apr 20\)/.test(banner(weekStart(24))));
+  assert.ok(/Week 24 of 28 · Phase 4 Peak/.test(banner(weekStart(24))) && /Next deload: week 27 \(Apr 20 to Apr 26\)/.test(banner(weekStart(24))));
 });
 check('Deload weeks are flagged in the banner and styled as deloads', () => {
   for (const w of [6, 13, 20, 27]) { const b = banner(weekStart(w)); assert.ok(/class="phase deload"/.test(b) && /Deload week/.test(b) && !/Next deload/.test(b), 'week ' + w); }
@@ -301,7 +301,7 @@ check('Deload weeks are flagged in the banner and styled as deloads', () => {
 check('Core and Cardio banners show the same week/phase title and next deload', () => {
   for (const type of ['core', 'cardio']) {
     const b = run(`phaseBanner(${J(weekStart(9))}, ${J(type)})`);
-    assert.ok(/Week 9 of 28 · Phase 2 Build/.test(b) && /Next deload: week 13 \(Jan 6 to Jan 12\)/.test(b), type + ': ' + b);
+    assert.ok(/Week 9 of 28 · Phase 2 Build/.test(b) && /Next deload: week 13 \(Jan 12 to Jan 18\)/.test(b), type + ': ' + b);
     assert.ok(!/Intensity:/.test(b) && !/1RM/.test(b), type + ' should not show lifting intensity');
   }
 });
