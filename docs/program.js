@@ -96,6 +96,7 @@
   const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
   const range = (v, lo, hi) => isObj(v) && isInt(v.low, lo, hi) && isInt(v.high, lo, hi) && v.low <= v.high;
   const str = v => typeof v === 'string' && v.trim().length > 0;
+  const MACHINE_RE = /^[A-Za-z0-9][A-Za-z0-9 ./&()-]{0,39}$/;
 
   // Returns a list of problems (empty when the document is usable).
   function validate(doc) {
@@ -150,8 +151,8 @@
     else for (const s of SESSIONS) {
       const c = cs[s], p = `cardio.sessions["${s}"]`;
       if (!isObj(c)) { bad(p, 'required'); continue; }
-      if (!str(c.machine)) bad(p + '.machine', 'required');
-      if (c.alternatives !== undefined && !(Array.isArray(c.alternatives) && c.alternatives.every(str))) bad(p + '.alternatives', 'list of machine names');
+      if (!(str(c.machine) && MACHINE_RE.test(c.machine))) bad(p + '.machine', 'required machine name (letters, numbers, spaces and . / & ( ) - only, up to 40 characters)');
+      if (c.alternatives !== undefined && !(Array.isArray(c.alternatives) && c.alternatives.every(m => str(m) && MACHINE_RE.test(m)))) bad(p + '.alternatives', 'list of machine names');
       if (c.type === 'HIIT') {
         if (!isInt(c.rounds, 1, 40)) bad(p + '.rounds', 'whole number 1–40');
         if (!isInt(c.workSec, 5, 600)) bad(p + '.workSec', 'seconds, 5–600');

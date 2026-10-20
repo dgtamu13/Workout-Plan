@@ -5,7 +5,7 @@
   'use strict';
 
   const lib = () => root.ProgramLib || (typeof require === 'function' ? require('./program.js') : null);
-  const SESSIONS = ['PUSH A', 'PULL A', 'LEGS A', 'PUSH B', 'PULL B', 'LEGS B'];
+  const SESSIONS = lib().SESSIONS;
   const CIRCUITS = ['A', 'B', 'C'];
   const SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
   const DAYS = ['training', 'rest'];
@@ -23,6 +23,7 @@
   // Hard limits. A file outside them is rejected before it is shown.
   const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148] };
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const MACHINE_RE = /^[A-Za-z0-9][A-Za-z0-9 ./&()-]{0,39}$/; // plain machine names only: the name ends up in the cardio form
 
   const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const isNum = v => typeof v === 'number' && Number.isFinite(v);
@@ -54,8 +55,9 @@
     const fail = () => ({ ok: false, errors, warnings, proposal: null });
     if (!isObj(raw)) { errors.push('The file must contain a JSON object.'); return fail(); }
     const L = lib(), program = ctx.program || L.BUILTIN, plan = ctx.plan || null, foods = ctx.foods || {};
-    const lastChange = lastCalorieChange(ctx.applied), gen = Date.parse(raw.generatedAt);
-    const locked = lastChange !== null && !Number.isNaN(gen) && gen - lastChange < LIMITS.lockoutDays * 864e5;
+    // The lockout runs against the later of the file's generatedAt and now, so a future-dated file cannot skip it.
+    const lastChange = lastCalorieChange(ctx.applied), gen = Date.parse(raw.generatedAt), ref = Math.max(gen, ctx.now ?? Date.now());
+    const locked = lastChange !== null && !Number.isNaN(gen) && ref - lastChange < LIMITS.lockoutDays * 864e5;
     unknownKeys(raw, TOP_KEYS, '', err);
     if (raw.schema !== SCHEMA) err('schema', `must be "${SCHEMA}"`);
     if (raw.version !== 1) err('version', 'must be 1');
@@ -143,9 +145,9 @@
           else entry.date = x.date;
           const has = program.cardio.sessions[x.session];
           if (has.type !== kind && !/^(PUSH|PULL)/.test(x.session)) err(`${p}.type`, `${x.session} is a ${has.type} session and only push and pull sessions can switch between HIIT and Zone 2`);
-          if (x.machine !== undefined) { if (str(x.machine, 40)) entry.machine = x.machine.trim(); else err(`${p}.machine`, 'must be text up to 40 characters'); }
+          if (x.machine !== undefined) { if (typeof x.machine === 'string' && MACHINE_RE.test(x.machine.trim())) entry.machine = x.machine.trim(); else err(`${p}.machine`, 'must be a machine name up to 40 characters, such as "Rower" (letters, numbers, spaces and . / & ( ) - only)'); }
           if (x.type === 'hiit') {
-            if (!/^(PUSH|PULL)/.test(x.session)) err(`${p}.session`, 'HIIT is for push and pull days only');
+            if (!/^(PUSH|PULL)/.test(x.session) && has.type === kind) err(`${p}.session`, 'HIIT is for push and pull days only');
             if (!isInt(x.rounds) || x.rounds < 1) err(`${p}.rounds`, 'required whole number, 1 or more');
             else if (x.rounds > LIMITS.hiitRounds) err(`${p}.rounds`, `${x.rounds} is over the limit of ${LIMITS.hiitRounds} HIIT rounds`);
             else entry.rounds = x.rounds;
@@ -214,7 +216,7 @@
                   const ip = `${p}.items[${i}]`;
                   if (!isObj(it)) return err(ip, 'must be an object');
                   unknownKeys(it, ['food', 'slot', 'train', 'rest'], ip, err);
-                  if (typeof it.food !== 'string' || !foods[it.food]) return err(`${ip}.food`, `unknown food "${it.food}" (use an existing food id)`);
+                  if (typeof it.food !== 'string' || !Object.hasOwn(foods, it.food)) return err(`${ip}.food`, `unknown food "${it.food}" (use an existing food id)`);
                   if (!SLOTS.includes(it.slot)) return err(`${ip}.slot`, `must be one of ${SLOTS.join(', ')}`);
                   const bad = ['train', 'rest'].filter(k => !isNum(it[k]) || it[k] < 0 || it[k] > 2000);
                   if (bad.length) return err(`${ip}.${bad[0]}`, 'required grams, a number from 0 to 2000');
@@ -347,7 +349,7 @@
           const o = cur.find(e => lower(e.name) === lower(x.name));
           if (!o) return add({ ref: `${base}/${x.name}`, group, section: key, kind: 'add', name: x.name, label: `Add ${x.name}`, from: null, to: summary(x), force: true });
           for (const [f, label, fmt] of fields) {
-            if (JSON.stringify(o[f] ?? null) === JSON.stringify(x[f] ?? null)) continue;
+            if (fmt(o) === fmt(x)) continue; // compare what the user would see, so equivalent spellings ("Chest" vs ["Chest"]) are not changes
             add({ ref: `${base}/${o.name}/${f}`, group, section: key, kind: 'change', name: o.name, field: f, label: `${o.name}: ${label}`, from: fmt(o), to: fmt(x) });
           }
         });
@@ -418,12 +420,12 @@
 
   // Stall swaps follow the agent spec: at most one per session per week, one exercise out and one in, and the same muscle group.
   // Sessions (newest first) in which `name` was logged with working sets, from the workouts map.
-  function loggedSessions(workouts, name, before) {
-    return Object.values(workouts || {}).filter(w => w && w.type === 'lift' && w.date && w.date <= before && Array.isArray(w.exercises))
+  function loggedSessions(workouts, name, before, session, countable) {
+    return Object.values(workouts || {}).filter(w => w && w.type === 'lift' && w.session === session && w.date && w.date <= before && Array.isArray(w.exercises) && (!countable || countable(w)))
       .map(w => ({ date: w.date, ex: w.exercises.find(e => e && e.name === name && !e.skipped && (e.sets || []).some(s => Number(s.r) > 0)) })).filter(x => x.ex)
       .sort((a, b) => b.date.localeCompare(a.date)).map(x => ({ date: x.date, sets: x.ex.sets.filter(s => Number(s.r) > 0) }));
   }
-  function checkSwaps(changes, program, proposal, workouts) {
+  function checkSwaps(changes, program, proposal, workouts, countable) {
     const errors = [], bySection = {};
     changes.filter(c => c.swap).forEach(c => { (bySection[`${c.group}|${c.section}`] ||= []).push(c); });
     for (const [key, list] of Object.entries(bySection)) {
@@ -434,7 +436,7 @@
       if (group !== 'lifting') continue;
       const cur = program.sessions[section].exercises.find(e => e.name === out[0].name);
       if (workouts && cur) {
-        const hist = loggedSessions(workouts, cur.name, proposal.generatedAt.slice(0, 10)).slice(0, LIMITS.stallSessions), top = cur.reps.high;
+        const hist = loggedSessions(workouts, cur.name, proposal.generatedAt.slice(0, 10), section, countable).slice(0, LIMITS.stallSessions), top = cur.reps.high;
         const hit = hist.find(h => h.sets.every(x => Number(x.r) >= top));
         if (hist.length < LIMITS.stallSessions) errors.push(`${where}: ${cur.name} has ${hist.length} logged session${hist.length === 1 ? '' : 's'}, and a stall swap needs ${LIMITS.stallSessions} in a row without reaching the top of the rep range (${top} reps on every set)`);
         else if (hit) errors.push(`${where}: ${cur.name} reached the top of the rep range (${top} reps on every set) on ${hit.date}, so it has not stalled for ${LIMITS.stallSessions} sessions`);
@@ -455,9 +457,11 @@
     const res = typeof text === 'string' ? parse(text, ctx) : validate(text, ctx);
     if (!res.ok) return { ...res, changes: [] };
     const changes = diff(ctx, res.proposal), { unexplained, idle } = explain(changes, res.proposal);
-    const warnings = res.warnings.slice(), swapErrors = checkSwaps(changes, ctx.program || lib().BUILTIN, res.proposal, ctx.workouts);
+    const warnings = res.warnings.slice(), swapErrors = checkSwaps(changes, ctx.program || lib().BUILTIN, res.proposal, ctx.workouts, ctx.countable);
     if (swapErrors.length) return { ok: false, errors: swapErrors, warnings, proposal: null, changes: [] };
     if (idle.length) warnings.push(`changeLog entries with no matching change: ${idle.join(', ')}`);
+    const pv = (ctx.program || lib().BUILTIN).version;
+    if (res.proposal.basedOnProgramVersion && res.proposal.basedOnProgramVersion !== pv) warnings.push(`This plan was built against program version ${res.proposal.basedOnProgramVersion}, but yours is version ${pv}. Check the old values shown for each change.`);
     if (unexplained.length) return { ok: false, errors: unexplained.map(c => `changeLog: "${c.label}" (${c.section}) has no reason. Add a changeLog entry whose refs include "${c.ref}".`), warnings, proposal: null, changes: [] };
     return { ok: true, errors: [], warnings, proposal: res.proposal, changes };
   }
@@ -558,6 +562,6 @@
     return !(appliedList || []).some(a => Date.parse(a.generatedAt) >= t);
   };
 
-  root.PlanProposal = { SESSIONS, SCHEMA, LIMITS, lastCalorieChange, validate, parse, diff, explain, review, apply, defaults, isNewer, proposalId };
+  root.PlanProposal = { SESSIONS, SCHEMA, LIMITS, dayStr, lastCalorieChange, validate, parse, diff, explain, review, apply, defaults, isNewer, proposalId };
   if (typeof module === 'object' && module.exports) module.exports = root.PlanProposal;
 })(typeof window !== 'undefined' ? window : globalThis);

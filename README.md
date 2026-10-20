@@ -10,6 +10,12 @@ Source of the app is a single page: [`docs/index.html`](docs/index.html).
 | `docs/index.html` | The app (HTML, CSS and JS in one file) |
 | `docs/manifest.webmanifest` | PWA manifest (standalone, dark theme, icons) |
 | `docs/drive-sync.js` | Syncs your data to a private file in your own Google Drive |
+| `docs/program.js` | The built-in lifting program, its validation, and conversion to the rows the app renders |
+| `docs/sheets-sync.js` | Publishes to a Google Sheet and reads the training agent's plan |
+| `docs/plan-proposal.js` | Validates, diffs and applies the agent's `next-week-plan.json` |
+| `PROGRAM_SCHEMA.md`, `PLAN_SCHEMA.md` | The `config/program` and `next-week-plan.json` formats, with full examples |
+| `training-agent-spec.md` | The rules the training agent follows (v0.2) |
+| `scripts/` | Node tests (`npm test`) and their fixtures |
 | `docs/sw.js` | Service worker: precaches the app shell, works offline |
 | `docs/vendor/chart.umd.js` | Chart.js 4.4.1, bundled so charts work offline |
 | `docs/icons/` | App icons (SVG source plus PNGs) |
@@ -50,7 +56,7 @@ The exercises, core circuits and cardio prescriptions are data, not code. The ap
 
 **Data & sync → Google Sheet** (History tab) publishes workouts, body, meals and check-ins, plus the current program and meal plan (Program and Meal Plan tabs), to a Sheet in a Drive folder called "Training Calendar Data" after every submit. It needs the Google Sheets API turned on for the Cloud project and the `drive.file` and `spreadsheets` scopes on the consent screen, then tap Connect.
 
-The training agent writes the plan JSON into the Sheet's `Plan` tab (or `next-week-plan.json` in the folder). The app checks for it on open and when you return to the tab; a **New** badge appears on History when its `generatedAt` is newer than the last plan you applied. The review screen shows each change by lifting, core, cardio and meals with the old value, new value and the agent's reason, and you accept or reject each one. Changes tagged `auto` start accepted, `approval` ones start unaccepted. Applying writes `config/program` and `config/plan` and records what was accepted and rejected in `applied-plans`. The file is validated first (unknown fields, HIIT rounds over 16, Zone 2 over 60 minutes, protein changes and calorie changes over 150 kcal are rejected). The format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); `scripts/verify-proposal.js` tests it.
+The training agent writes the plan JSON into the Sheet's `Plan` tab (or `next-week-plan.json` in the folder). The app checks for it on open and when you return to the tab; a **New** badge appears on History when its `generatedAt` is newer than the last plan you applied. The review screen shows each change by lifting, core, cardio and meals with the old value, new value and the agent's reason, and you accept or reject each one. Changes tagged `auto` start accepted, `approval` ones start unaccepted. Applying writes `config/program` and `config/plan` and records what was accepted and rejected in `applied-plans`. The file is validated first: unknown fields, HIIT rounds over 16 or more than 4 HIIT sessions, Zone 2 over 60 minutes, protein changes, calorie changes over 150 kcal or inside the 14-day lockout, and stall swaps that are not backed by 3 logged stalled sessions or that change muscle group or movement pattern are all rejected. Stall swaps start accepted; the newest applied plan can be undone. The format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); `scripts/verify-proposal.js` tests it.
 
 ## Data
 

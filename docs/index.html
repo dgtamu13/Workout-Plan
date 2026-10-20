@@ -1703,8 +1703,8 @@ function cardioRow(ex, session, k) {
       <div class="cgrid">
         <label class="full"><span class="field-label">Equipment <span class="rec-tag">★ = recommended</span></span><select id="cMachine" data-act="cf" data-f="machine" ${dis}>
           <option value="">Choose…</option>
-          <option value="${c.recommended}" ${ex.machine === c.recommended || !ex.machine ? 'selected' : ''}>★ ${c.recommended} (recommended)</option>
-          ${c.alts.map(m => `<option value="${m}" ${ex.machine === m ? 'selected' : ''}>${m}</option>`).join('')}
+          <option value="${esc(c.recommended)}" ${ex.machine === c.recommended || !ex.machine ? 'selected' : ''}>★ ${esc(c.recommended)} (recommended)</option>
+          ${c.alts.map(m => `<option value="${esc(m)}" ${ex.machine === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}
         </select></label>
         ${f('cDur','duration','Duration (min)', rec.duration, '1')}
         ${f('cHr','hr','Avg HR (bpm)', hiit ? '' : Z2[0] + '–' + Z2[1], '1')}
@@ -2285,7 +2285,7 @@ function renderMeals() {
   const menus = Object.keys(plan.menus).sort();
   return head + `<div class="head-ctrls">
       <div class="seg" role="group" aria-label="Day type">${['training', 'rest'].map(t => `<button data-act="m-daytype" data-v="${t}" aria-pressed="${d.dayType === t}">${t === 'rest' ? 'Rest day' : 'Training'}</button>`).join('')}</div>
-      <label class="sess" style="margin-left:0"><span class="field-label">Menu</span><select data-act="m-menu" id="mMenu">${menus.map(m => `<option value="${m}" ${m === d.menu ? 'selected' : ''}>${m} · ${esc(plan.menus[m].name)}</option>`).join('')}</select></label>
+      <label class="sess" style="margin-left:0"><span class="field-label">Menu</span><select data-act="m-menu" id="mMenu">${menus.map(m => `<option value="${esc(m)}" ${m === d.menu ? 'selected' : ''}>${esc(m)} · ${esc(plan.menus[m].name)}</option>`).join('')}</select></label>
     </div></div>
     <div class="card" id="mTotals">${totalsHTML(d)}</div>
     ${SLOTS.map(s => slotHTML(d, s)).join('')}
@@ -2901,9 +2901,9 @@ function programRows() {
 const MEAL_COLS = ['Area', 'Menu / Day', 'Slot', 'Item', 'Food ID', 'Training g', 'Rest g', 'kcal', 'Protein (g)', 'Fat (g)', 'Carbs (g)'];
 function mealPlanRows() {
   const rows = [MEAL_COLS], add = o => rows.push(MEAL_COLS.map(c => o[c] ?? ''));
-  const last = window.PlanProposal ? PlanProposal.lastCalorieChange(Object.values(appliedPlans)) : null, day = t => new Date(t).toISOString().slice(0, 10);
-  add({ Area:'Meta', 'Menu / Day':'last calorie change', Item:last ? day(last) : 'never' });
-  add({ Area:'Meta', 'Menu / Day':'calorie lockout ends', Item:last ? day(last + 14 * 864e5) : '' });
+  const PP = window.PlanProposal, last = PP ? PP.lastCalorieChange(appliedList()) : null;
+  add({ Area:'Meta', 'Menu / Day':'last calorie change', Item:last ? PP.dayStr(last) : 'never' });
+  add({ Area:'Meta', 'Menu / Day':'calorie lockout ends', Item:last ? PP.dayStr(last + PP.LIMITS.lockoutDays * 864e5) : '' });
   if (!plan) return rows;
   Object.entries(plan.targets || {}).forEach(([d, t]) => add({ Area:'Target', 'Menu / Day':d, Item:'Daily target', kcal:t.kcal, 'Protein (g)':t.p, 'Fat (g)':t.f, 'Carbs (g)':t.c }));
   Object.entries(plan.menus || {}).forEach(([k, m]) => { add({ Area:'Menu', 'Menu / Day':k, Item:m.name });
@@ -2926,8 +2926,9 @@ if (window.SheetsSync) {
   SheetsSync.configure({ getTables: sheetTables });
   SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; afterSnap(); });
 }
-const reviewCtx = () => ({ program: PROGRAM, plan, foods, applied: Object.values(appliedPlans), workouts });
 const appliedList = () => Object.values(appliedPlans);
+// countable: the same sessions the app's own progression counts (not deload weeks, not low-readiness days), so "stalled" means the same in both.
+const reviewCtx = () => ({ program: PROGRAM, plan, foods, applied: appliedList(), workouts, countable: w => !programInfo(w.date).deload && fatigueAdjust(w.date) >= 1 });
 // True when the file in the Drive folder has a generatedAt later than every plan applied so far.
 const newProposalReady = () => !!(proposalSeen && window.PlanProposal && PlanProposal.isNewer(proposalSeen.generatedAt, appliedList()));
 function noteProposalFile(f, source) {
@@ -2942,7 +2943,7 @@ function checkProposalQuietly(force) {
   if (!sheetsOn() || !SheetsSync.linked() || SheetsSync.state() === 'needs-auth') return;
   if (!force && Date.now() - proposalCheckedAt < 300000) return;
   proposalCheckedAt = Date.now();
-  SheetsSync.readPlan(false).then(f => { const before = newProposalReady(); noteProposalFile(f, `${f.name}, updated ${fmtWhen(f.modifiedTime)}`); if (newProposalReady() !== before) afterSnap(); }).catch(() => {});
+  SheetsSync.readPlan(false, true).then(f => { const before = newProposalReady(); noteProposalFile(f, `${f.name}, updated ${fmtWhen(f.modifiedTime)}`); if (newProposalReady() !== before) afterSnap(); }).catch(() => {});
 }
 setTimeout(() => checkProposalQuietly(true), 2500);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkProposalQuietly(); });
@@ -2955,6 +2956,15 @@ function openReview(text, source) {
   else { sheetsUI.review = res; sheetsUI.decisions = PlanProposal.defaults(res.changes); }
   renderNow();
 }
+// Untouched drafts were built from the old plan: drop them so they rebuild. Drafts with entries are kept.
+function dropUntouchedDrafts() {
+  Object.keys(drafts).forEach(id => {
+    const d = drafts[id]; if (!d) return;
+    if (id.endsWith('_meals')) { if (!d.userSet && !(d.items || []).some(i => i.on) && !mealLog[d.date]) delete drafts[id]; }
+    else if (/_(lift|core|cardio)$/.test(id) && !hasData(d) && !workouts[id]) delete drafts[id];
+  });
+  saveDraftsSoon();
+}
 function applyReview() {
   const r = sheetsUI.review; if (!r) return;
   const accepted = r.changes.filter(c => sheetsUI.decisions[c.id]).map(c => c.id);
@@ -2964,13 +2974,7 @@ function applyReview() {
   if (res.plan) { plan = res.plan; lsSet(LS2.plan, plan); if (db) db.doc('config/plan').set(plan).catch(() => {}); }
   appliedPlans[res.record.id] = res.record; lsSet(LS.applied, appliedPlans);
   if (db) db.collection('applied-plans').doc(res.record.id).set(res.record).catch(() => {});
-  // Untouched drafts were built from the old plan: drop them so they rebuild. Drafts with entries are kept.
-  Object.keys(drafts).forEach(id => {
-    const d = drafts[id]; if (!d) return;
-    if (id.endsWith('_meals')) { if (!d.userSet && !(d.items || []).some(i => i.on) && !mealLog[d.date]) delete drafts[id]; }
-    else if (/_(lift|core|cardio)$/.test(id) && !hasData(d) && !workouts[id]) delete drafts[id];
-  });
-  saveDraftsSoon();
+  dropUntouchedDrafts();
   const a = res.record.accepted.length, n = res.record.rejected.length;
   sheetsUI = { review:null, decisions:{}, errors:[], warnings:[], info:`Applied ${a} change${a === 1 ? '' : 's'}${n ? ` and rejected ${n}` : ''}.${res.program ? ` Program is now version ${res.program.version} (agent).` : ''}`, source:'', paste:false, busy:false };
   renderCalendar(); renderNow();
@@ -2980,14 +2984,14 @@ function undoPlan(id) {
   const r = appliedPlans[id]; if (!r || !r.before || r.undoneAt) return;
   const newest = appliedList().filter(x => x.before && !x.undoneAt).sort((a, b) => b.appliedAt.localeCompare(a.appliedAt))[0];
   if (newest !== r) { sheetsUI.info = 'Undo the newer plan first.'; renderNow(); return; }
+  if (r.before.program && PROGRAM.version !== r.programVersion) { sheetsUI.info = `The program has changed since this plan (it is now version ${PROGRAM.version}, the plan made version ${r.programVersion}), so undoing it would overwrite those edits.`; renderNow(); return; }
   if (!confirm('Undo this plan? The program and meal plan go back to how they were before it. Logged workouts are not changed.')) return;
   if (r.before.program) { const doc = { ...clone(r.before.program), version: PROGRAM.version + 1, source: 'manual' }; applyProgram(doc); lsSet(PROGRAM_LS, doc); if (db) db.doc('config/program').set(doc).catch(() => {}); }
-  if (r.before.plan) { plan = r.before.plan; lsSet(LS2.plan, plan); if (db) db.doc('config/plan').set(plan).catch(() => {}); }
+  if ('plan' in r.before) { plan = r.before.plan; lsSet(LS2.plan, plan); if (db) (plan ? db.doc('config/plan').set(plan) : db.doc('config/plan').delete()).catch(() => {}); }
   const rec = { ...r, undoneAt: new Date().toISOString() }; delete rec.before;
   appliedPlans[id] = rec; lsSet(LS.applied, appliedPlans);
   if (db) db.collection('applied-plans').doc(id).set(rec).catch(() => {});
-  Object.keys(drafts).forEach(k => { const d = drafts[k]; if (!d) return; if (k.endsWith('_meals')) { if (!d.userSet && !(d.items || []).some(i => i.on) && !mealLog[d.date]) delete drafts[k]; } else if (/_(lift|core|cardio)$/.test(k) && !hasData(d) && !workouts[k]) delete drafts[k]; });
-  saveDraftsSoon();
+  dropUntouchedDrafts();
   sheetsUI = { ...sheetsUI, info: `Undid the plan for the week of ${shortDate(r.weekStart)}.`, review: null, errors: [] };
   renderCalendar(); renderNow();
 }
@@ -3006,7 +3010,7 @@ function reviewPanel() {
   const u = sheetsUI, r = u.review;
   const errs = u.errors.length ? `<ul class="plan-errors">${u.errors.slice(0, 12).map(e => `<li>${esc(e)}</li>`).join('')}${u.errors.length > 12 ? `<li>…and ${u.errors.length - 12} more</li>` : ''}</ul>` : '';
   if (!r) return `${u.info ? `<div class="note" style="margin-top:12px">${esc(u.info)}</div>` : ''}${u.errors.length ? `<div class="note plan-bad" style="margin-top:12px"><b>This plan file was not accepted, and nothing was changed.</b> Fix these and check again:</div>${errs}` : ''}`;
-  const p = r.proposal, acc = r.changes.filter(c => u.decisions[c.id]).length, rej = r.changes.length - acc, done = !!appliedPlans[p.id];
+  const p = r.proposal, acc = r.changes.filter(c => u.decisions[c.id]).length, rej = r.changes.length - acc, done = !!appliedPlans[p.id] && !appliedPlans[p.id].undoneAt;
   const groups = GROUPS.map(([g, name]) => {
     const rows = r.changes.filter(c => c.group === g); if (!rows.length) return '';
     const secs = []; rows.forEach(c => { let s = secs.find(x => x.name === (c.group === 'core' ? `Circuit ${c.section}` : c.section)); if (!s) secs.push(s = { name: c.group === 'core' ? `Circuit ${c.section}` : c.section, rows: [] }); s.rows.push(c); });
@@ -3027,7 +3031,7 @@ function reviewPanel() {
     </div>
   </div>`;
 }
-function appliedList2() {
+function appliedPlansHtml() {
   const rows = appliedList().sort((a, b) => (b.appliedAt || '').localeCompare(a.appliedAt || ''));
   if (!rows.length) return '';
   const li = c => `<li><b>${esc(c.label)}</b> <span class="from">${esc(c.from ?? '')}</span>${c.from !== null && c.to !== null ? ' → ' : ''}<span class="to">${esc(c.to ?? '')}</span><br><span class="note">${esc(c.reason || '')}</span></li>`;
@@ -3067,7 +3071,7 @@ function sheetsCard() {
     </div>
     ${sheetsUI.paste ? `<textarea id="planText" placeholder="Paste next-week-plan.json here" style="width:100%;min-height:120px;margin-top:10px;font-family:var(--mono);font-size:.72rem"></textarea><div class="export-row" style="margin:8px 0 0"><button class="primary" data-act="sh-paste-go" style="margin-left:0">Review changes</button><button class="mini" data-act="sh-paste-close">Cancel</button></div>` : ''}
     ${reviewPanel()}
-    ${appliedList2()}
+    ${appliedPlansHtml()}
   </div>`;
 }
 main.addEventListener('click', async e => {
@@ -3081,7 +3085,8 @@ main.addEventListener('click', async e => {
     if (act !== 'sh-check' && proposalSeen) { openReview(proposalSeen.text, proposalSeen.source); return; }
     sheetsUI.busy = true; renderNow();
     try { const f = await SheetsSync.readPlan(true); const src = `${f.name}, updated ${fmtWhen(f.modifiedTime)}`; noteProposalFile(f, src); sheetsUI.busy = false;
-      if (proposalSeen) openReview(f.text, src); else { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:'No proposed plan yet. The Plan tab and next-week-plan.json in the "Training Calendar Data" folder have no generatedAt. Ask the training agent to write the plan, then check again.' }; renderNow(); } }
+      let json = true; try { JSON.parse(f.text); } catch { json = false; }
+      if (proposalSeen || !json) openReview(f.text, src); else { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:'No proposed plan yet. The Plan tab and next-week-plan.json in the "Training Calendar Data" folder have no generatedAt. Ask the training agent to write the plan, then check again.' }; renderNow(); } }
     catch (err) { sheetsUI = { ...sheetsUI, busy:false, review:null, errors:[], info:`Could not read the plan file: ${SheetsSync.error() || err.message}` }; renderNow(); }
     return;
   }

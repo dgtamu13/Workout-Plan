@@ -93,7 +93,7 @@ check('A calorie change of exactly 150 (up or down) is allowed, on either target
   const too = review(mut(f => { f.meals.targets.rest = { kcal: 1999 }; })); assert.ok(!too.ok && /rest\.kcal.*limited/.test(too.errors.join()));
 });
 const kcalRec = (appliedAt, extra = {}) => ({ id: 'p1', generatedAt: '2026-10-26T20:00:00Z', appliedAt, accepted: [{ id: 'meals/targets/training/kcal' }], rejected: [], ...extra });
-const withApplied = (...recs) => ({ ...ctx(), applied: recs });
+const NOW = Date.parse('2026-11-02T20:00:00Z'), withApplied = (...recs) => ({ ...ctx(), applied: recs, now: NOW });
 check('Calorie lockout: a calorie change within 14 days of the last one is rejected, with the date it ends', () => {
   const r = review(EXAMPLE, withApplied(kcalRec('2026-10-27T12:00:00Z')));
   assert.ok(!r.ok && /calories were last changed on 2026-10-27; the 14-day lockout between calorie changes runs until 2026-11-10/.test(r.errors.join()), r.errors.join());
@@ -108,10 +108,20 @@ check('Calorie lockout: undone plans, plans without an accepted calorie change, 
   const keep = review(mut(f => { f.meals.targets.training.kcal = 2500; f.meals.targets.training.c = 290; }), withApplied(kcalRec('2026-10-30T12:00:00Z')));
   assert.ok(keep.ok, keep.errors.join()); // carbs and menu changes are allowed during the lockout when kcal is untouched
 });
+check('Calorie lockout: a future-dated generatedAt cannot skip it (the real clock counts too)', () => {
+  const f = mut(x => { x.generatedAt = '2027-06-01T00:00:00Z'; });
+  const r = review(f, { ...withApplied(kcalRec('2027-05-25T12:00:00Z')), now: Date.parse('2027-05-27T00:00:00Z') });
+  assert.ok(!r.ok && /last changed on 2027-05-25/.test(r.errors.join()), r.errors.join());
+  const stale = review(mut(x => { x.generatedAt = '2026-10-01T00:00:00Z'; }), { ...withApplied(kcalRec('2026-10-30T12:00:00Z')), now: Date.parse('2026-11-02T20:00:00Z') });
+  assert.ok(!stale.ok && /last changed on 2026-10-30/.test(stale.errors.join()), 'a backdated file is judged by the real clock');
+  assert.ok(review(f, { ...withApplied(kcalRec('2026-10-30T12:00:00Z')), now: Date.parse('2026-11-20T00:00:00Z') }).ok, 'allowed once 14 days have really passed');
+});
 check('Calorie lockout: the most recent calorie change decides', () => {
   const r = review(EXAMPLE, withApplied(kcalRec('2026-09-01T12:00:00Z'), kcalRec('2026-10-30T12:00:00Z', { id: 'p2' })));
   assert.ok(!r.ok && /last changed on 2026-10-30/.test(r.errors.join()));
 });
+rejects('a machine name that could carry markup', f => { f.cardio[0].machine = '<img src=x onerror=alert(1)>'; }, /cardio\[0\]\.machine: must be a machine name/);
+rejects('a food id that is an object prototype key', f => { f.meals.menus.A.items[0].food = 'constructor'; }, /unknown food "constructor"/);
 rejects('a menu item with an unknown food', f => { f.meals.menus.A.items[0].food = 'nope'; }, /unknown food "nope"/);
 rejects('a new exercise missing required fields', f => { f.lifting['PUSH A'][2] = { name: 'Cable Crossover' }; }, /lifting\["PUSH A"\]\[2\]\.muscleGroup: required for a new exercise/);
 rejects('a bad rep range on an existing exercise', f => { f.lifting['PUSH A'][0].reps = { low: 15, high: 10 }; }, /lifting\["PUSH A"\]\[0\]\.reps/);
@@ -119,7 +129,7 @@ rejects('two swaps in one session in one week', f => { f.lifting['PUSH A'][3] = 
 rejects('a swap to a different muscle group', f => { f.lifting['PUSH A'][2].muscleGroup = ['Triceps']; }, /works Triceps but Pec Deck \/ Cable Fly, the exercise it replaces, works Chest/);
 rejects('a swap to a different movement pattern', f => { f.lifting['PUSH A'][2].pattern = 'vertical-press'; }, /Cable Crossover is a vertical-press but Pec Deck \/ Cable Fly, the exercise it replaces, is a fly/);
 rejects('a swap whose new exercise has no pattern', f => { delete f.lifting['PUSH A'][2].pattern; }, /Cable Crossover needs a "pattern"/);
-const logs = (dates, reps, name = 'Pec Deck / Cable Fly') => Object.fromEntries(dates.map(d => [`${d}_lift`, { date: d, type: 'lift', exercises: [{ name, planned: name, skipped: false, sets: reps.map(r => ({ w: 100, r })) }] }]));
+const logs = (dates, reps, name = 'Pec Deck / Cable Fly') => Object.fromEntries(dates.map(d => [`${d}_lift`, { date: d, type: 'lift', session: 'PUSH A', exercises: [{ name, planned: name, skipped: false, sets: reps.map(r => ({ w: 100, r })) }] }]));
 check('Stall check: a swap needs 3 logged sessions in a row that missed the top of the rep range', () => {
   const stalled = logs(['2026-10-20', '2026-10-27', '2026-10-30'], [12, 13, 13]);
   assert.ok(review(EXAMPLE, { ...ctx(), workouts: stalled }).ok, 'three stalled sessions');
@@ -238,6 +248,34 @@ check('isNewer compares generatedAt with every applied plan', () => {
   assert.strictEqual(P.isNewer('2026-11-02T20:00:00Z', [{ generatedAt: '2026-11-02T20:00:00Z' }]), false);
   assert.strictEqual(P.isNewer('2026-11-02T20:00:00Z', [{ generatedAt: '2026-11-09T20:00:00Z' }, { generatedAt: '2026-10-26T20:00:00Z' }]), false);
   assert.strictEqual(P.isNewer('not a date', []), false);
+});
+
+console.log('Review fixes');
+check('Equivalent spellings of an existing exercise are not changes ("Chest" vs ["Chest"], role compound, restSec 60 vs {60,60})', () => {
+  const f = mut(x => { Object.assign(x.lifting['LEGS A'][5], { muscleGroup: 'Calves', role: 'isolation' }); Object.assign(x.lifting['PUSH A'][1], { role: 'isolation', restSec: { low: 60, high: 90 } }); });
+  const r = review(f); assert.ok(r.ok, r.errors.join()); assert.ok(!r.changes.some(c => /Muscle group|Role|Rest/.test(c.label)), 'no phantom changes');
+  const p = ctx(); p.program.sessions['PUSH A'].exercises[1].restSec = 75;
+  const g = review(mut(x => { x.lifting['PUSH A'][1].restSec = 75; x.lifting['LEGS A'][0].role = 'compound'; }), p); assert.ok(g.ok && !g.changes.some(c => /Rest/.test(c.label)), g.errors.join());
+});
+check('Stall check only counts sessions of the same workout (a lift in PUSH A and PULL A), and can skip uncountable ones', () => {
+  const mk = (d, session, r) => ({ date: d, type: 'lift', session, exercises: [{ name: 'Pec Deck / Cable Fly', skipped: false, sets: [{ w: 1, r }, { w: 1, r }] }] });
+  const other = { a: mk('2026-10-20', 'PULL A', 10), b: mk('2026-10-27', 'PULL A', 10), c: mk('2026-10-30', 'PULL A', 10) };
+  const r = review(EXAMPLE, { ...ctx(), workouts: other }); assert.ok(!r.ok && /has 0 logged sessions/.test(r.errors.join()), r.errors.join());
+  const mine = { a: mk('2026-10-20', 'PUSH A', 10), b: mk('2026-10-27', 'PUSH A', 10), c: mk('2026-10-30', 'PUSH A', 10) };
+  assert.ok(review(EXAMPLE, { ...ctx(), workouts: mine }).ok);
+  const skipped = review(EXAMPLE, { ...ctx(), workouts: mine, countable: w => w.date !== '2026-10-30' }); assert.ok(!skipped.ok && /has 2 logged sessions/.test(skipped.errors.join()));
+});
+check('HIIT on a legs session reports one error, not two', () => {
+  const r = review(mut(f => { Object.assign(f.cardio[0], { session: 'LEGS B' }); })); assert.strictEqual(r.errors.filter(e => /cardio\[0\]/.test(e)).length, 1, r.errors.join());
+});
+check('A plan built against another program version gets a warning, not an error', () => {
+  const r = review(mut(f => { f.basedOnProgramVersion = 3; })); assert.ok(r.ok); assert.ok(r.warnings.some(w => /built against program version 3, but yours is version 1/.test(w)), r.warnings.join());
+  assert.ok(!review(mut(f => { f.basedOnProgramVersion = 1; })).warnings.length);
+});
+check('Program documents with markup in a machine name or alternative are invalid', () => {
+  const d = clone(ProgramLib.BUILTIN); d.cardio.sessions['PUSH A'].machine = '<b>x</b>'; assert.ok(ProgramLib.validate(d).some(e => /machine/.test(e)));
+  const e = clone(ProgramLib.BUILTIN); e.cardio.sessions['PUSH A'].alternatives = ['Rower', '"><script>']; assert.ok(ProgramLib.validate(e).some(x => /alternatives/.test(x)));
+  assert.deepStrictEqual(ProgramLib.validate(ProgramLib.BUILTIN), []);
 });
 
 console.log('Documentation');

@@ -186,9 +186,9 @@
       let tab = null;
       try {
         const sheetId = await ensureSheet(interactive);
-        const v = await json(`${SHEETS}/${sheetId}/values/${encodeURIComponent(`'${PLAN_TAB}'!A:A`)}`, {}, interactive);
+        const v = await json(`${SHEETS}/${sheetId}/values/${encodeURIComponent(`'${PLAN_TAB}'!A:A`)}?valueRenderOption=UNFORMATTED_VALUE`, {}, interactive);
         const text = (v.values || []).map(r => (r && r[0] != null ? String(r[0]) : '')).join('').trim();
-        if (text) { const sm = await json(`${DRIVE}/files/${sheetId}?fields=modifiedTime`, {}, interactive); tab = { text, modifiedTime: sm.modifiedTime, name: `${PLAN_TAB} tab`, id: sheetId }; }
+        if (text) { const g = generatedAtOf(text); tab = { text, modifiedTime: g !== null ? new Date(g).toISOString() : (await json(`${DRIVE}/files/${sheetId}?fields=modifiedTime`, {}, interactive)).modifiedTime, name: `${PLAN_TAB} tab`, id: sheetId }; } // the sheet's own modified time changes on every publish, so a plan is dated by its generatedAt
       } catch (e) { if (!(e instanceof ApiError) || e.status !== 400) throw e; } // 400: the Plan tab does not exist yet
       if (!tab) return file;
       const t = generatedAtOf(tab.text), f = generatedAtOf(file.text);
@@ -200,9 +200,10 @@
     try { ids.linked = true; save(); await getToken(true); return publish(true); }
     catch (e) { ids.linked = !!ids.sheetId; save(); const [s, m] = classify(e); setState(s === 'offline' && !ids.sheetId ? 'off' : s, m); return false; }
   }
-  async function check(interactive) {
+  // quiet: a background look for a new plan must not change the publish state shown to the user if it fails.
+  async function check(interactive, quiet) {
     try { return await readPlan(interactive); }
-    catch (e) { const [s, m] = classify(e); setState(s, m); throw e; }
+    catch (e) { if (!quiet) { const [s, m] = classify(e); setState(s, m); } throw e; }
   }
   function disconnect() {
     try { if (token && root.google) root.google.accounts.oauth2.revoke(token, () => {}); } catch {}
