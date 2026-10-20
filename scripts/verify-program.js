@@ -115,6 +115,13 @@ check('Workout and draft ver records the program version that built them', () =>
   vm.runInContext(`applyProgram(ProgramLib.BUILTIN)`, ctx);
   assert.ok(/^7:b1$/.test(run('planVer()')), run('planVer()'));
 });
+check('A pull-forward deload week in the document makes that week a deload week', () => {
+  assert.strictEqual(run(`programInfo('2026-11-03').deload`), false);
+  vm.runInContext(`applyProgram(${J({ ...clone(ProgramLib.BUILTIN), version: 2, source: 'agent', deloadWeeks: ['2026-11-03'] })})`, ctx);
+  assert.strictEqual(run(`programInfo('2026-11-03').deload`), true); assert.strictEqual(run(`programInfo('2026-11-05').deload`), true); assert.strictEqual(run(`programInfo('2026-11-10').deload`), false);
+  assert.ok(run(`liftRows('PUSH A', '2026-11-03')`).every(r => r[1] === 'Deload'));
+  vm.runInContext(`applyProgram(ProgramLib.BUILTIN)`, ctx);
+});
 check('An invalid document is ignored and the current program stays', () => {
   const before = run('planVer()');
   const ok = run(`applyProgram(${J(mutated(d => { d.sessions['PUSH A'].exercises[0].sets = 0; }))})`);

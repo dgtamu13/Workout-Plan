@@ -4,11 +4,13 @@ The lifting program lives in one document, `config/program`, in the same sync st
 
 ## How the app uses it
 
+The training agent's weekly proposals (see [PLAN_SCHEMA.md](PLAN_SCHEMA.md)) change this document: accepting changes in the review screen writes a new version with `source: "agent"`.
+
 - If `config/program` exists **and passes validation**, the app uses it. Otherwise it uses the built-in program. An invalid document is ignored (the Data & sync card says so) and the last good program stays in place.
 - The first time a device finishes a real sync and finds no `config/program`, it writes the built-in program there. Until then, and when you are not connected, the built-in program is used.
 - Phase and deload changes still apply on top of this document for each date: the document is the **Phase 1 (Reclaim) base** plan. Extra sets, wave loading, rest-pause, supersets and deload cuts are computed from it.
 - Deloads follow the training agent spec: every 5th working week (weeks 5, 10, 15, 20, 25). A deload week cuts lifting sets, HIIT rounds and Zone 2 time by 40% at the same weights. A pull-forward week listed in `deloadWeeks` is also a deload week, and the count restarts there: a pull-forward in week 8 makes weeks 13, 18 and 23 the next deloads.
-- Every workout and draft records the program that built it in its `ver` field, as `<plan code>:<program tag>:<applied proposals>`. The program tag is the source's first letter plus the version, for example `b1` (built-in v1), `a3` (agent v3) or `m2` (manual v2). **Bump `version` whenever you change the document**, so untouched drafts rebuild and records say which version produced them.
+- Every workout and draft records the program that built it in its `ver` field, as `<plan code>:<program tag>`. The program tag is the source's first letter plus the version, for example `b1` (built-in v1), `a3` (agent v3) or `m2` (manual v2). **Bump `version` whenever you change the document**, so untouched drafts rebuild and records say which version produced them.
 - `config/program` is included in the JSON backup and restored on import. A backup made when no program has been stored includes the built-in program with `u: 0`, so any real edit wins over it. A program in a backup that fails validation is skipped and the rest of the backup still imports.
 - **Data & sync → Use built-in program** replaces the document with the built-in program at the next version number.
 
@@ -38,6 +40,7 @@ The lifting program lives in one document, `config/program`, in the same sync st
 | `methods` | list of texts (optional) | Method tags such as `"Drop Set"` or `"Tempo"`. When present they are shown in place of the RIR label. |
 | `role` | `"compound"`, `"primary"`, `"secondary"` or `"isolation"` (optional, default compound) | Drives the phase rules: the first two compounds get an extra set in Phases 2–3, isolation work gets rest-pause in Phase 3, `primary` lifts get waves in Phase 3 on strength days. |
 | `cue` | text (optional) | Coaching cue shown under the exercise. |
+| `targetLb` | number (optional) | A target load written by the training agent. It is shown after the cue as "Target load: N lb"; the app still works out the next load from your logged sets. |
 
 ### Core circuit (`core.circuits.A|B|C`)
 

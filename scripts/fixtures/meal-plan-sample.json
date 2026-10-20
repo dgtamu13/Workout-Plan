@@ -1,0 +1,619 @@
+{
+ "plan": {
+  "menus": {
+   "A": {
+    "items": [
+     {
+      "food": "whey",
+      "rest": 61,
+      "slot": "Breakfast",
+      "train": 61
+     },
+     {
+      "food": "creatine",
+      "rest": 5,
+      "slot": "Breakfast",
+      "train": 5
+     },
+     {
+      "food": "egg",
+      "rest": 150,
+      "slot": "Breakfast",
+      "train": 150
+     },
+     {
+      "food": "dkb",
+      "rest": 90,
+      "slot": "Breakfast",
+      "train": 90
+     },
+     {
+      "food": "banana",
+      "rest": 0,
+      "slot": "Breakfast",
+      "train": 120
+     },
+     {
+      "food": "chx_breast",
+      "rest": 165,
+      "slot": "Lunch",
+      "train": 165
+     },
+     {
+      "food": "rice",
+      "rest": 65,
+      "slot": "Lunch",
+      "train": 105
+     },
+     {
+      "food": "broccoli",
+      "rest": 150,
+      "slot": "Lunch",
+      "train": 150
+     },
+     {
+      "food": "oliveoil",
+      "rest": 12,
+      "slot": "Lunch",
+      "train": 8
+     },
+     {
+      "food": "greek0",
+      "rest": 250,
+      "slot": "Snack",
+      "train": 250
+     },
+     {
+      "food": "blueberry",
+      "rest": 100,
+      "slot": "Snack",
+      "train": 100
+     },
+     {
+      "food": "honey",
+      "rest": 0,
+      "slot": "Snack",
+      "train": 15
+     },
+     {
+      "food": "pb",
+      "rest": 16,
+      "slot": "Snack",
+      "train": 16
+     },
+     {
+      "food": "salmon",
+      "rest": 170,
+      "slot": "Dinner",
+      "train": 170
+     },
+     {
+      "food": "potato",
+      "rest": 210,
+      "slot": "Dinner",
+      "train": 325
+     },
+     {
+      "food": "greenbeans",
+      "rest": 150,
+      "slot": "Dinner",
+      "train": 150
+     }
+    ],
+    "name": "Chicken & rice / Salmon & potatoes"
+   },
+   "B": {
+    "items": [
+     {
+      "food": "whey",
+      "rest": 61,
+      "slot": "Breakfast",
+      "train": 61
+     },
+     {
+      "food": "creatine",
+      "rest": 5,
+      "slot": "Breakfast",
+      "train": 5
+     },
+     {
+      "food": "egg",
+      "rest": 150,
+      "slot": "Breakfast",
+      "train": 150
+     },
+     {
+      "food": "dkb",
+      "rest": 90,
+      "slot": "Breakfast",
+      "train": 90
+     },
+     {
+      "food": "banana",
+      "rest": 0,
+      "slot": "Breakfast",
+      "train": 120
+     },
+     {
+      "food": "turkey93",
+      "rest": 205,
+      "slot": "Lunch",
+      "train": 205
+     },
+     {
+      "food": "rice",
+      "rest": 70,
+      "slot": "Lunch",
+      "train": 110
+     },
+     {
+      "food": "pepper",
+      "rest": 100,
+      "slot": "Lunch",
+      "train": 100
+     },
+     {
+      "food": "spinach",
+      "rest": 50,
+      "slot": "Lunch",
+      "train": 50
+     },
+     {
+      "food": "salsa",
+      "rest": 60,
+      "slot": "Lunch",
+      "train": 60
+     },
+     {
+      "food": "greek0",
+      "rest": 250,
+      "slot": "Snack",
+      "train": 250
+     },
+     {
+      "food": "blueberry",
+      "rest": 100,
+      "slot": "Snack",
+      "train": 100
+     },
+     {
+      "food": "honey",
+      "rest": 0,
+      "slot": "Snack",
+      "train": 15
+     },
+     {
+      "food": "pb",
+      "rest": 16,
+      "slot": "Snack",
+      "train": 16
+     },
+     {
+      "food": "cod",
+      "rest": 200,
+      "slot": "Dinner",
+      "train": 200
+     },
+     {
+      "food": "sweetpot",
+      "rest": 180,
+      "slot": "Dinner",
+      "train": 280
+     },
+     {
+      "food": "zucchini",
+      "rest": 200,
+      "slot": "Dinner",
+      "train": 200
+     },
+     {
+      "food": "oliveoil",
+      "rest": 20,
+      "slot": "Dinner",
+      "train": 16
+     }
+    ],
+    "name": "Turkey burrito bowl / Cod & sweet potato"
+   },
+   "C": {
+    "items": [
+     {
+      "food": "whey",
+      "rest": 61,
+      "slot": "Breakfast",
+      "train": 61
+     },
+     {
+      "food": "creatine",
+      "rest": 5,
+      "slot": "Breakfast",
+      "train": 5
+     },
+     {
+      "food": "egg",
+      "rest": 150,
+      "slot": "Breakfast",
+      "train": 150
+     },
+     {
+      "food": "dkb",
+      "rest": 90,
+      "slot": "Breakfast",
+      "train": 90
+     },
+     {
+      "food": "banana",
+      "rest": 0,
+      "slot": "Breakfast",
+      "train": 120
+     },
+     {
+      "food": "chx_thigh",
+      "rest": 175,
+      "slot": "Lunch",
+      "train": 175
+     },
+     {
+      "food": "pasta",
+      "rest": 45,
+      "slot": "Lunch",
+      "train": 70
+     },
+     {
+      "food": "spinach",
+      "rest": 60,
+      "slot": "Lunch",
+      "train": 60
+     },
+     {
+      "food": "parmesan",
+      "rest": 10,
+      "slot": "Lunch",
+      "train": 10
+     },
+     {
+      "food": "oliveoil",
+      "rest": 10,
+      "slot": "Lunch",
+      "train": 8
+     },
+     {
+      "food": "greek0",
+      "rest": 250,
+      "slot": "Snack",
+      "train": 250
+     },
+     {
+      "food": "blueberry",
+      "rest": 100,
+      "slot": "Snack",
+      "train": 100
+     },
+     {
+      "food": "honey",
+      "rest": 0,
+      "slot": "Snack",
+      "train": 15
+     },
+     {
+      "food": "pb",
+      "rest": 16,
+      "slot": "Snack",
+      "train": 16
+     },
+     {
+      "food": "shrimp",
+      "rest": 145,
+      "slot": "Dinner",
+      "train": 145
+     },
+     {
+      "food": "rice",
+      "rest": 75,
+      "slot": "Dinner",
+      "train": 115
+     },
+     {
+      "food": "broccoli",
+      "rest": 150,
+      "slot": "Dinner",
+      "train": 150
+     },
+     {
+      "food": "pepper",
+      "rest": 100,
+      "slot": "Dinner",
+      "train": 100
+     },
+     {
+      "food": "soy",
+      "rest": 15,
+      "slot": "Dinner",
+      "train": 15
+     },
+     {
+      "food": "oliveoil",
+      "rest": 17,
+      "slot": "Dinner",
+      "train": 15
+     }
+    ],
+    "name": "Chicken thigh pasta / Shrimp stir-fry"
+   }
+  },
+  "notes": "Eat 8am-8pm. Creatine 5 g with breakfast. All grams are raw / as sold (rice and pasta dry).",
+  "rateBand": [
+   0.1,
+   0.5
+  ],
+  "rateTarget": 0.25,
+  "targets": {
+   "rest": {
+    "c": 190,
+    "f": 70,
+    "kcal": 2150,
+    "p": 195
+   },
+   "training": {
+    "c": 280,
+    "f": 65,
+    "kcal": 2500,
+    "p": 200
+   }
+  }
+ },
+ "foods": {
+  "whey": {
+   "c": 9.9,
+   "f": 4.9,
+   "kcal": 395,
+   "name": "ON Gold Standard Whey (powder)",
+   "p": 79
+  },
+  "chx_thigh": {
+   "c": 0,
+   "f": 4.1,
+   "kcal": 121,
+   "name": "Chicken thigh, skinless boneless (raw)",
+   "p": 19.7
+  },
+  "pasta": {
+   "c": 75,
+   "f": 1.5,
+   "kcal": 371,
+   "name": "Pasta (dry)",
+   "p": 13
+  },
+  "cottage2": {
+   "c": 4.8,
+   "f": 2.3,
+   "kcal": 81,
+   "name": "Cottage cheese, 2%",
+   "p": 10.5
+  },
+  "sweetpot": {
+   "c": 20.1,
+   "f": 0.1,
+   "kcal": 86,
+   "name": "Sweet potato (raw)",
+   "p": 1.6
+  },
+  "banana": {
+   "c": 22.8,
+   "f": 0.3,
+   "kcal": 89,
+   "name": "Banana (peeled)",
+   "p": 1.1
+  },
+  "egg": {
+   "c": 0.7,
+   "f": 9.5,
+   "kcal": 143,
+   "name": "Whole eggs (raw, ~50 g each)",
+   "p": 12.6
+  },
+  "parmesan": {
+   "c": 3.2,
+   "f": 25.8,
+   "kcal": 392,
+   "name": "Parmesan",
+   "p": 35.8
+  },
+  "ricecake": {
+   "c": 81.5,
+   "f": 2.8,
+   "kcal": 387,
+   "name": "Rice cakes",
+   "p": 8.2
+  },
+  "potato": {
+   "c": 18.1,
+   "f": 0.1,
+   "kcal": 79,
+   "name": "Russet potato (raw)",
+   "p": 2.1
+  },
+  "spinach": {
+   "c": 3.6,
+   "f": 0.4,
+   "kcal": 23,
+   "name": "Spinach (raw)",
+   "p": 2.9
+  },
+  "oliveoil": {
+   "c": 0,
+   "f": 100,
+   "kcal": 884,
+   "name": "Olive oil",
+   "p": 0
+  },
+  "salmon": {
+   "c": 0,
+   "f": 13.4,
+   "kcal": 208,
+   "name": "Atlantic salmon fillet (raw)",
+   "p": 20.4
+  },
+  "rice": {
+   "c": 80,
+   "f": 0.7,
+   "kcal": 365,
+   "name": "Jasmine rice (dry)",
+   "p": 7.1
+  },
+  "cod": {
+   "c": 0,
+   "f": 0.7,
+   "kcal": 82,
+   "name": "Cod fillet (raw)",
+   "p": 17.8
+  },
+  "dkb": {
+   "c": 48.9,
+   "f": 3.3,
+   "kcal": 244,
+   "name": "Dave's Killer Bread 21 Grain (~45 g slice)",
+   "p": 11.1
+  },
+  "honey": {
+   "c": 82.4,
+   "f": 0,
+   "kcal": 304,
+   "name": "Honey",
+   "p": 0.3
+  },
+  "feta": {
+   "c": 3.9,
+   "f": 21.3,
+   "kcal": 264,
+   "name": "Feta",
+   "p": 14.2
+  },
+  "pepper": {
+   "c": 6,
+   "f": 0.3,
+   "kcal": 26,
+   "name": "Bell pepper (raw)",
+   "p": 1
+  },
+  "strawberry": {
+   "c": 7.7,
+   "f": 0.3,
+   "kcal": 32,
+   "name": "Strawberries",
+   "p": 0.7
+  },
+  "tuna": {
+   "c": 0,
+   "f": 0.8,
+   "kcal": 116,
+   "name": "Tuna, canned in water (drained)",
+   "p": 25.5
+  },
+  "mozz": {
+   "c": 2.8,
+   "f": 15.9,
+   "kcal": 254,
+   "name": "Mozzarella, part-skim",
+   "p": 24.3
+  },
+  "shrimp": {
+   "c": 0,
+   "f": 0.5,
+   "kcal": 85,
+   "name": "Shrimp, peeled (raw)",
+   "p": 20.1
+  },
+  "avocado": {
+   "c": 8.5,
+   "f": 14.7,
+   "kcal": 160,
+   "name": "Avocado",
+   "p": 2
+  },
+  "salsa": {
+   "c": 7,
+   "f": 0.2,
+   "kcal": 36,
+   "name": "Salsa",
+   "p": 1.5
+  },
+  "apple": {
+   "c": 13.8,
+   "f": 0.2,
+   "kcal": 52,
+   "name": "Apple",
+   "p": 0.3
+  },
+  "greenbeans": {
+   "c": 7,
+   "f": 0.2,
+   "kcal": 31,
+   "name": "Green beans (raw)",
+   "p": 1.8
+  },
+  "broccoli": {
+   "c": 6.6,
+   "f": 0.4,
+   "kcal": 34,
+   "name": "Broccoli (raw)",
+   "p": 2.8
+  },
+  "pb": {
+   "c": 22,
+   "f": 50,
+   "kcal": 594,
+   "name": "Natural peanut butter",
+   "p": 22
+  },
+  "soy": {
+   "c": 4.9,
+   "f": 0.6,
+   "kcal": 53,
+   "name": "Soy sauce, low sodium",
+   "p": 8.1
+  },
+  "blueberry": {
+   "c": 14.5,
+   "f": 0.3,
+   "kcal": 57,
+   "name": "Blueberries",
+   "p": 0.7
+  },
+  "greek0": {
+   "c": 3.6,
+   "f": 0.4,
+   "kcal": 57,
+   "name": "Greek yogurt, nonfat plain",
+   "p": 10.2
+  },
+  "chx_breast": {
+   "c": 0,
+   "f": 2.6,
+   "kcal": 120,
+   "name": "Chicken breast, skinless (raw)",
+   "p": 22.5
+  },
+  "turkey93": {
+   "c": 0,
+   "f": 8.3,
+   "kcal": 150,
+   "name": "Ground turkey 93/7 (raw)",
+   "p": 18.7
+  },
+  "zucchini": {
+   "c": 3.1,
+   "f": 0.3,
+   "kcal": 17,
+   "name": "Zucchini (raw)",
+   "p": 1.2
+  },
+  "creatine": {
+   "c": 0,
+   "f": 0,
+   "kcal": 0,
+   "name": "Creatine monohydrate",
+   "p": 0
+  }
+ }
+}
