@@ -903,8 +903,34 @@ function cardioPlan(session, k) {
   return c;
 }
 
+// ═══ HIIT detail fields, warnings and the watts series ══════════════
+// Cardio records may also carry workSec, restSec, avgWatts and hrRec60 (HIIT only). All are optional, so older records stay valid.
+const HIIT_ROUNDS_WARN = 16, Z2_MINUTES_WARN = 60;
+function protocolSecs(protocol) { const m = /(\d+)\s*sec\s*on\D+(\d+)\s*sec\s*off/i.exec(protocol || ''); return m ? { work: +m[1], rest: +m[2] } : null; }
+function cardioWarnings(ex) {
+  const out = [];
+  if (!ex || ex.skipped) return out;
+  if (ex.planned === 'HIIT' && num(ex.rounds) > HIIT_ROUNDS_WARN) out.push({ code: 'hiit-rounds', msg: `${num(ex.rounds)} HIIT rounds is more than ${HIIT_ROUNDS_WARN}. Check the number; this many hard rounds takes a long time to recover from.` });
+  if (ex.planned === 'Zone 2' && num(ex.duration) > Z2_MINUTES_WARN) out.push({ code: 'z2-duration', msg: `${num(ex.duration)} minutes of Zone 2 is more than ${Z2_MINUTES_WARN}. Check the number.` });
+  return out;
+}
+const hiitProto = e => `${num(e.workSec) ?? '?'}:${num(e.restSec) ?? '?'}`;
+const hiitKey = e => `${e.machine || '?'}|${hiitProto(e)}`;
+const hiitLabel = e => `${e.machine || 'Unknown machine'} · ${hiitProto(e)}`;
+// sessions: [{ date, ex }]. Watts are only comparable on the same machine and work:rest protocol, so the series also reports
+// every setup used and every point where the setup changed (a baseline reset).
+function hiitSeries(sessions) {
+  const points = sessions.filter(x => x.ex && x.ex.planned === 'HIIT' && !x.ex.skipped && num(x.ex.avgWatts) > 0)
+    .sort((a, b) => a.date.localeCompare(b.date)).map(x => ({ date: x.date, watts: num(x.ex.avgWatts), key: hiitKey(x.ex), label: hiitLabel(x.ex) }));
+  const combos = [];
+  points.forEach(p => { let c = combos.find(x => x.key === p.key); if (!c) combos.push(c = { key: p.key, label: p.label, count: 0, first: p.date, last: p.date }); c.count++; c.last = p.date; });
+  const resets = [];
+  points.forEach((p, i) => { if (i > 0 && p.key !== points[i - 1].key) resets.push({ index: i, date: p.date, from: points[i - 1].label, to: p.label }); });
+  return { points, combos, resets, latestKey: points.length ? points[points.length - 1].key : null };
+}
+
 // ═══ Session + drafts ═══════════════════════════════════════════════
-const PLAN_VER = 5; // bump when the plan tables change so untouched drafts rebuild
+const PLAN_VER = 6; // bump when the plan tables change so untouched drafts rebuild
 function sessionFor(k) {
   if (sessOverride[k]) return sessOverride[k];
   for (const t of ['lift','core','cardio']) if (workouts[`${k}_${t}`]?.session) return workouts[`${k}_${t}`].session;
@@ -916,7 +942,7 @@ function buildDraft(type, k, session) {
   if (!session || session === 'REST') return base;
   if (type === 'lift') base.exercises = liftRows(session, k).map(([n,,s]) => { const swapKey = `${session}:${n}`; const name = swapMemory[swapKey] || n; return { planned:n, name, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }; });
   if (type === 'core') base.exercises = coreRows(session, k).map(([n,s,t]) => ({ planned:n, name:n, skipped:false, unit:coreSpec(t).unit, sets:Array.from({length:+s}, () => ({ v:null, w:null })) }));
-  if (type === 'cardio') { const c = cardioPlan(session, k); base.exercises = [{ planned:c.type, name:c.type, machine:c.recommended, skipped:false, duration:null, hr:null, maxhr:null, distance:null, rounds:null, level:'' }]; }
+  if (type === 'cardio') { const c = cardioPlan(session, k); const ps = c.type === 'HIIT' ? (protocolSecs(c.protocol) || {}) : null; base.exercises = [{ planned:c.type, name:c.type, machine:c.recommended, skipped:false, duration:null, hr:null, maxhr:null, distance:null, rounds:null, level:'', ...(ps ? { workSec:ps.work ?? null, restSec:ps.rest ?? null, avgWatts:null, hrRec60:null } : {}) }]; }
   return base;
 }
 
@@ -936,7 +962,7 @@ function isDirty(id) {
   return JSON.stringify(d) !== JSON.stringify(stripMeta(clone(w)));
 }
 function hasData(d) {
-  return d.exercises.some(e => e.skipped || (e.sets ? e.sets.some(s => num(s.r) !== null || num(s.v) !== null || num(s.w) !== null) : [e.duration, e.hr, e.distance, e.rounds].some(v => num(v) !== null))) || !!d.notes;
+  return d.exercises.some(e => e.skipped || (e.sets ? e.sets.some(s => num(s.r) !== null || num(s.v) !== null || num(s.w) !== null) : [e.duration, e.hr, e.distance, e.rounds, e.avgWatts, e.hrRec60].some(v => num(v) !== null))) || !!d.notes;
 }
 
 // ═══ History lookups + recommendations ══════════════════════════════
@@ -1294,6 +1320,8 @@ function trendAlerts() {
   if (Object.keys(prs).length > 0 && recent_prs.length === 0) {
     alerts.push({ type:'warn', msg:`🏆 No new PRs in the last 30 days. You may need a deload or program adjustment.` });
   }
+  Object.values(workouts).filter(w => w.type === 'cardio' && w.date >= addDays(today, -30)).sort((a, b) => b.date.localeCompare(a.date))
+    .forEach(w => cardioWarnings(w.exercises[0]).forEach(x => alerts.push({ type:'warn', msg:`⚠️ ${shortDate(w.date)}: ${x.msg}` })));
   let logged = 0;
   for (let i = 1; i <= 7; i++) {
     const dd = addDays(today, -i);
@@ -1656,7 +1684,8 @@ function cardioRow(ex, session, k) {
   const hiit = c.type === 'HIIT';
   const dis = ex.skipped ? 'disabled' : '';
   const cc = hiit ? 'var(--red)' : 'var(--accent)';
-  const lastStr = rec.last ? `Last ${shortDate(rec.last.date)}: ${rec.last.machine || 'machine ?'} · ${rec.last.duration} min${rec.last.hr ? ` · avg ${rec.last.hr} bpm` : ''}${rec.last.rounds ? ` · ${rec.last.rounds} rounds` : ''}` : '';
+  const lastStr = rec.last ? `Last ${shortDate(rec.last.date)}: ${rec.last.machine || 'machine ?'} · ${rec.last.duration} min${rec.last.hr ? ` · avg ${rec.last.hr} bpm` : ''}${rec.last.rounds ? ` · ${rec.last.rounds} rounds` : ''}${rec.last.avgWatts ? ` · avg ${rec.last.avgWatts} W (${hiitProto(rec.last)})` : ''}` : '';
+  const ps = hiit ? (protocolSecs(c.protocol) || {}) : {}, warn = cardioWarnings(ex);
   const f = (id, fld, label, ph, step, full) => `<label class="${full ? 'full' : ''}"><span class="field-label">${label}</span><input id="${id}" data-act="cf" data-f="${fld}" type="number" inputmode="decimal" min="0" ${step ? `step="${step}"` : ''} placeholder="${ph}" value="${ex[fld] ?? ''}" ${dis}></label>`;
   return `<div class="ex${ex.skipped ? ' skipped' : ''}">
     <div class="plan">
@@ -1685,7 +1714,9 @@ function cardioRow(ex, session, k) {
         ${f('cDist','distance','Distance (mi)', '', '0.01')}
         ${hiit ? f('cRounds','rounds','Rounds', rec.rounds, '1') : ''}
         <label class="${hiit ? '' : 'full'}"><span class="field-label">Speed / level</span><input id="cLevel" type="text" data-act="cf" data-f="level" placeholder="e.g. 3.6 mph, 10% incline" value="${esc(ex.level || '')}" ${dis}></label>
+        ${hiit ? f('cWork', 'workSec', 'Work (s)', ps.work ?? '', '1') + f('cRest', 'restSec', 'Rest (s)', ps.rest ?? '', '1') + f('cWatts', 'avgWatts', 'Avg watts', '', '1') + f('cRec60', 'hrRec60', 'HR recovery 60s (bpm drop, optional)', '', '1') : ''}
       </div>
+      <div id="cardioWarn" class="trend-alert warn" style="margin-top:10px" ${warn.length ? '' : 'hidden'}>${warn.map(x => esc(x.msg)).join('<br>')}</div>
     </div>
   </div>`;
 }
@@ -1729,9 +1760,9 @@ function summaryOf(w) {
 }
 function detailTable(w) {
   if (w.type === 'cardio') {
-    const e = w.exercises[0] || {};
-    return `<table class="htable"><thead><tr><th>Type</th><th>Machine</th><th>Min</th><th>Avg HR</th><th>Max HR</th><th>Miles</th><th>Rounds</th><th>Speed / level</th></tr></thead>
-      <tbody><tr class="${e.skipped ? 'skip' : ''}"><td>${esc(e.planned)}</td><td>${esc(e.machine || '—')}</td><td class="m">${e.duration ?? '—'}</td><td class="m">${e.hr ?? '—'}</td><td class="m">${e.maxhr ?? '—'}</td><td class="m">${e.distance ?? '—'}</td><td class="m">${e.rounds ?? '—'}</td><td>${esc(e.level || '—')}</td></tr></tbody></table>`;
+    const e = w.exercises[0] || {}, hx = e.workSec != null || e.restSec != null || e.avgWatts != null || e.hrRec60 != null;
+    return `<table class="htable"><thead><tr><th>Type</th><th>Machine</th><th>Min</th><th>Avg HR</th><th>Max HR</th><th>Miles</th><th>Rounds</th>${hx ? '<th>Work:Rest</th><th>Avg W</th><th>HR rec 60s</th>' : ''}<th>Speed / level</th></tr></thead>
+      <tbody><tr class="${e.skipped ? 'skip' : ''}"><td>${esc(e.planned)}</td><td>${esc(e.machine || '—')}</td><td class="m">${e.duration ?? '—'}</td><td class="m">${e.hr ?? '—'}</td><td class="m">${e.maxhr ?? '—'}</td><td class="m">${e.distance ?? '—'}</td><td class="m">${e.rounds ?? '—'}</td>${hx ? `<td class="m">${e.workSec != null || e.restSec != null ? hiitProto(e) : '—'}</td><td class="m">${e.avgWatts ?? '—'}</td><td class="m">${e.hrRec60 ?? '—'}</td>` : ''}<td>${esc(e.level || '—')}</td></tr></tbody></table>`;
   }
   const rows = w.exercises.map(e => {
     const sets = e.skipped ? 'Skipped' : e.sets.filter(s => (w.type === 'lift' ? num(s.r) : num(s.v)) !== null)
@@ -1772,20 +1803,20 @@ function renderHistory() {
 }
 
 // ═══ CSV ════════════════════════════════════════════════════════════
-const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR'];
+const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s'];
 const cq = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 function toCSV(list) {
   const rows = [CSV_HEAD];
   for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date))) {
     for (const e of w.exercises) {
       const base = [w.date, w.session, TYPES[w.type], e.name, e.planned, e.skipped ? 'Yes' : 'No'];
-      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes]);
+      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60]);
       else {
         const mg = w.type === 'lift' ? musclesOf(e.name).join(' / ') : 'Core';
         const prior = w.type === 'lift' && !e.skipped ? bestBefore(e.name, w.date) : null;
         e.sets.forEach((s, j) => { const est = w.type === 'lift' ? e1rm(num(s.w), num(s.r)) : null; rows.push([...base, j + 1,
           s.w, w.type === 'lift' ? s.r : '', w.type === 'core' ? s.v : '', w.type === 'core' ? e.unit : 'lb×reps',
-          '', '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '']); });
+          '', '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '']); });
       }
     }
   }
@@ -1842,6 +1873,8 @@ main.addEventListener('input', e => {
   } else if (act === 'cf') {
     const ex = curDraft().exercises[0]; const f = t.dataset.f;
     ex[f] = (f === 'machine' || f === 'level') ? t.value : num(t.value);
+    const cw = document.getElementById('cardioWarn'), wl = cardioWarnings(ex);
+    if (cw) { cw.hidden = !wl.length; cw.innerHTML = wl.map(x => esc(x.msg)).join('<br>'); }
     touch();
   } else if (act === 'notes') { curDraft().notes = t.value; touch(); }
   else if (act === 'psearch') { _debouncedPickSearch(t); }
@@ -2312,6 +2345,39 @@ async function submitMeals() {
 }
 
 // ── Progress ──
+function wattsCard(ws) {
+  const head = '<h4>HIIT average watts</h4>', sub = 'Only compared within the same machine and work:rest protocol. A dashed line marks a baseline reset when either one changes.';
+  if (!ws.points.length) return `<div class="chart-card">${head}<div class="sub">${sub}</div><div class="chart-empty">Log average watts on a HIIT session to see this chart.</div></div>`;
+  const sel = pr.hiitKey === 'all' || ws.combos.some(c => c.key === pr.hiitKey) ? pr.hiitKey : ws.latestKey;
+  const opts = ws.combos.map(c => `<option value="${esc(c.key)}" ${sel === c.key ? 'selected' : ''}>${esc(c.label)} (${c.count})</option>`).join('') + (ws.combos.length > 1 ? `<option value="all" ${sel === 'all' ? 'selected' : ''}>All setups</option>` : '');
+  let extra = '', notes = '';
+  if (sel !== 'all') {
+    const pts = ws.points.filter(p => p.key === sel), b = pts[0], l = pts[pts.length - 1], d = l.watts - b.watts, at = ws.points.indexOf(b), prev = at > 0 ? ws.points[at - 1] : null;
+    extra = `<div class="kv tiles" style="margin-bottom:10px">${tile('Baseline', `${b.watts} W`, shortDate(b.date))}${tile('Latest', `${l.watts} W`, shortDate(l.date))}${tile('Change', pts.length > 1 ? `${sgn(d, 0)} W` : '—', pts.length > 1 && b.watts ? `${sgn(d / b.watts * 100, 1)}%` : 'first session', trendCls(pts.length > 1 ? d : null))}</div>`;
+    notes = [prev ? `Baseline reset on ${shortDate(b.date)}: switched from ${prev.label} to ${b.label}. Earlier sessions are not compared.` : `Baseline set on ${shortDate(b.date)}: your first session on ${b.label}.`,
+      ...ws.resets.filter(r => r.to === b.label && r.index > at).map(r => `Back on this setup on ${shortDate(r.date)}.`)].map(x => `<div class="note" style="margin-bottom:4px">${esc(x)}</div>`).join('');
+  } else notes = ws.resets.length ? ws.resets.map(r => `<div class="note" style="margin-bottom:4px">Baseline reset on ${esc(shortDate(r.date))}: ${esc(r.from)} to ${esc(r.to)}</div>`).join('') : '<div class="note">One setup so far, so there are no resets.</div>';
+  chartQueue.push(['chWatts', t => {
+    const cols = [t.push, t.pull, t.legs, t.green, t.yellow, t.red];
+    let labels, datasets;
+    if (sel === 'all') {
+      labels = ws.points.map(p => shortDate(p.date));
+      datasets = ws.combos.map((c, ci) => ({ label: c.label, data: ws.points.map(p => p.key === c.key ? p.watts : null), borderColor: cols[ci % cols.length], backgroundColor: cols[ci % cols.length], pointRadius: 4, tension: .2, spanGaps: false }));
+    } else {
+      const pts = ws.points.filter(p => p.key === sel);
+      labels = pts.map(p => shortDate(p.date));
+      datasets = [{ label: 'Avg watts', data: pts.map(p => p.watts), borderColor: t.push, backgroundColor: t.push, pointRadius: 4, tension: .2 }, { label: 'Baseline', data: pts.map(() => pts[0].watts), borderColor: t.fg3, borderDash: [4, 4], pointRadius: 0, borderWidth: 1 }];
+    }
+    const o = copts(t, { y: { ticks: { color: t.fg3, font: { size: 10 }, callback: v => v + ' W' } } });
+    o.plugins.resets = { at: sel === 'all' ? ws.resets.map(r => r.index) : [] };
+    const plugin = { id: 'resets', afterDatasetsDraw(chart) {
+      const xs = chart.scales.x, a = chart.chartArea, c = chart.ctx, at = (chart.options.plugins.resets || {}).at || [];
+      at.forEach(i => { const px = (xs.getPixelForValue(i - 1) + xs.getPixelForValue(i)) / 2; c.save(); c.setLineDash([4, 4]); c.strokeStyle = t.red; c.lineWidth = 1; c.beginPath(); c.moveTo(px, a.top); c.lineTo(px, a.bottom); c.stroke(); c.setLineDash([]); c.fillStyle = t.red; c.font = '10px sans-serif'; c.textAlign = 'center'; c.fillText('Reset', px, a.top + 10); c.restore(); });
+    } };
+    return { type: 'line', data: { labels, datasets }, options: o, plugins: [plugin] };
+  }]);
+  return `<div class="chart-card">${head}<div class="sub">${sub}</div><div class="pick-ex"><select data-act="p-hiit" aria-label="Machine and protocol">${opts}</select></div>${extra}${notes}<div class="chart-box" style="margin-top:8px"><canvas id="chWatts" role="img" aria-label="HIIT average watts"></canvas></div></div>`;
+}
 function dataDates() { return [...Object.values(workouts).map(w => w.date), ...bodyEntries().map(e => e.date), ...Object.keys(mealLog)]; }
 function rangeControls() {
   const { months, years } = rangeOptions(dataDates(), todayKey()), r = pr.range;
@@ -2464,6 +2530,7 @@ function renderProgress() {
       { label:'Rounds', data:hiit.map(w => num(w.exercises[0].rounds)), borderColor:t.red, backgroundColor:t.red, pointRadius:4, stepped:true },
       { label:'Cap', data:hiit.map(w => cardioPlan(w.session, w.date)?.maxRounds ?? 10), borderColor:t.fg3, borderDash:[4, 4], pointRadius:0, borderWidth:1 },
     ] }, options:copts(t, { y:{ suggestedMin:4, suggestedMax:13 } }) }));
+  h += wattsCard(hiitSeries(hiit.map(w => ({ date:w.date, ex:w.exercises[0] }))));
   h += `</div>`;
 
   // Core
@@ -2590,6 +2657,7 @@ main.addEventListener('change', e => {
   if (act === 'm-on') { const d = getMealDraft(k); d.items[+t.dataset.i].on = t.checked; t.closest('.food-row')?.classList.toggle('off', !t.checked); refreshMealNums(d); touch2('meals'); }
   else if (act === 'm-menu') { const d = getMealDraft(k); drafts[`${k}_meals`] = buildMealDraft(k, d.dayType, t.value, { ...d, userSet:true }); touch2('meals'); renderNow(); }
   else if (act === 'p-ex') { pr.ex = t.value; updateE1RMChart(); }
+  else if (act === 'p-hiit') { pr.hiitKey = t.value; renderNow(); }
   else if (act === 'p-range-sel') { pr.range = t.value || 'mtd'; pr.wk = undefined; renderNow(); }
 });
 main.addEventListener('click', async e => {
