@@ -16,6 +16,7 @@ const ctx = {
   console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp,
   localStorage: { getItem: k => (k in ls ? ls[k] : null), setItem: (k, v) => { ls[k] = String(v); } },
   location: { hash: '' },
+  ProgramLib: require('../docs/program.js'),
 };
 vm.createContext(ctx);
 vm.runInContext(`

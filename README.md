@@ -39,6 +39,10 @@ Everything derives from the single `START` constant in `docs/index.html`.
 
 `scripts/verify-plan.js` (`npm test`) checks dates, phases, deloads, the plan tables and the progression rules.
 
+### Program document
+
+The exercises, core circuits and cardio prescriptions are data, not code. The app renders from the `config/program` document in the sync store when it exists and is valid, and falls back to the built-in program in `docs/program.js` (which also seeds the document). The phase and deload rules apply on top of it. The backup export includes `config/program` and import restores it. See [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md) for the schema and a full example. `scripts/verify-program.js` checks validation and that the built-in program renders exactly as before.
+
 ## Data
 
 Everything is saved on the device first (browser `localStorage`), so the app works offline.

@@ -560,6 +560,7 @@ body.resting .main { padding-bottom:120px; }
 
 <script src="vendor/chart.umd.js"></script>
 <script src="drive-sync.js"></script>
+<script src="program.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
 const START = new Date(2026, 9, 20); // Day 1 (PUSH A): Tue Oct 20, 2026
@@ -567,80 +568,22 @@ const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
 
-// [name, method, sets, reps, rest, cue, kind]  kind: C compound · P primary (strength day) · S secondary · I isolation
-// These are the Phase 1 (Reclaim) tables as written in the plan. liftRows() applies the phase and deload changes for a date.
-const H_REST = '60–90 sec', S_REST = '2–3 min';
-const LIFTING = {
-  'PUSH A': [
-    ['Incline DB Press','RIR 1–2','4','10–15',H_REST,'30–45° bench, 3 sec eccentric, 1 sec squeeze','C'],
-    ['Cable Lateral Raise','Drop Set','4','12–15',H_REST,'Lead with the elbow; drop set (−30%) on the last set','I'],
-    ['Pec Deck / Cable Fly','RIR 0–1','3','12–15',H_REST,'Full stretch, 1 sec peak squeeze','I'],
-    ['Machine Shoulder Press','RIR 1–2','3','12–15',H_REST,'3 sec eccentric, no shrug','C'],
-    ['Overhead Cable Extension','RIR 0–1','3','12–15',H_REST,'Cable overhead extension: full stretch, elbows in','I'],
-    ['Tricep Pushdown','RIR 0–1','3','15–20',H_REST,'Rope; flare the handles at the bottom','I'],
-    ['Face Pulls','RIR 0–1','2','15–20',H_REST,'Rope to forehead, external rotation','I'],
-  ],
-  'PULL A': [
-    ['Lat Pulldown','RIR 1–2','4','10–15',H_REST,'Wide overhand grip; full stretch at the top, pull to upper chest','C'],
-    ['Seated Cable Row','RIR 1–2','4','12–15',H_REST,'Wide grip, elbows flared, squeeze the scapulae','C'],
-    ['Single-Arm DB Row','RIR 1–2','3','12–15/arm',H_REST,'Full reach at the bottom, row to the hip','C'],
-    ['Cable Rear Delt Fly','RIR 0–1','3','15–20',H_REST,'Single arm at head height, wide arc','I'],
-    ['Face Pulls','RIR 0–1','3','15–20',H_REST,'Two days a week minimum','I'],
-    ['Incline DB Curl','RIR 0–1','3','12–15',H_REST,'Full stretch, supinate at the top','I'],
-    ['Cable Curl','RIR 0–1','3','12–15',H_REST,'Supinated grip, full ROM, 3 sec eccentric','I'],
-  ],
-  'LEGS A': [
-    ['Leg Press','RIR 1–2','4','12–15',H_REST,'Mid-platform, full ROM, controlled descent','C'],
-    ['Romanian Deadlift','RIR 1–2','3','10–12',H_REST,'Hips back, 3 sec eccentric','C'],
-    ['Walking Lunges','RIR 1–2','3','15/leg',H_REST,'Hold dumbbells; long stride, stay upright','C'],
-    ['Leg Curl','RIR 0–1','4','12–15',H_REST,'Seated; 1 sec peak, 3 sec eccentric','I'],
-    ['Bulgarian Split Squat','RIR 1–2','3','10–12/leg',H_REST,'Hold dumbbells; shin vertical, full depth','C'],
-    ['Standing Calf Raise','RIR 0–1','4','15–20',H_REST,'Pause 1 sec at the top and bottom','I'],
-    ['Seated Calf Raise','RIR 0–1','3','15–20',H_REST,'Full stretch, soleus emphasis','I'],
-  ],
-  'PUSH B': [
-    ['Barbell Bench Press','RIR 1','5','3–5',S_REST,'Full ROM, bar to chest','P'],
-    ['Standing OHP','RIR 1','4','4–6',S_REST,'Strict, no leg drive','P'],
-    ['Weighted Dips','RIR 2','3','5–6',S_REST,'Forward lean','S'],
-    ['Skull Crushers','RIR 2','3','6–8',S_REST,'EZ bar to the forehead, elbows in','S'],
-    ['DB Shoulder Press','RIR 2','3','6–8',S_REST,'Neutral grip is fine','S'],
-  ],
-  'PULL B': [
-    ['Conventional Deadlift','RIR 1','4','3–5',S_REST,'Brace hard, bar stays on the legs','P'],
-    ['Barbell Bent-Over Row','RIR 1','4','4–6',S_REST,'Overhand grip, 45° torso, 2 sec eccentric','P'],
-    ['Weighted Pull-Ups','RIR 1','4','4–6',S_REST,'Dead hang, full extension','P'],
-    ['Barbell Curl','RIR 2','3','6–8',S_REST,'Strict, 2 sec eccentric','S'],
-    ['Alternating Hammer Curl','RIR 2','3','8–10',S_REST,'Neutral grip, full ROM','S'],
-  ],
-  'LEGS B': [
-    ['Back Squat','RIR 1','5','3–5',S_REST,'High bar, break parallel','P'],
-    ['Front Squat','RIR 1','3','4–5',S_REST,'Elbows high, stay upright (goblet squat if needed)','P'],
-    ['Hip Thrust','RIR 2','4','6–8',S_REST,'Barbell; 1 sec squeeze at the top','S'],
-    ['Lying Leg Curl','RIR 2','3','6–8',S_REST,'3–4 sec eccentric','S'],
-    ['Deficit RDL','RIR 2','3','5–6',S_REST,'2 in. deficit, deep hinge','S'],
-  ],
-};
-// [name, sets, target]
-const CORE = {
-  'PUSH A': [['Cable Crunch','3','15 reps'],['Hanging Leg Raise','3','15 reps'],['Serratus Punch (cable)','3','15/side'],['Plank w/ Shoulder Tap','3','12/side']],
-  'PUSH B': [['Cable Crunch','3','15 reps'],['Hanging Leg Raise','3','15 reps'],['Serratus Punch (cable)','3','15/side'],['Plank w/ Shoulder Tap','3','12/side']],
-  'PULL A': [['Landmine Rotation','3','12/side'],['Cable Woodchop','3','12/side'],['Side Plank w/ Hip Dip','3','10/side'],['Pallof Press','3','12 reps']],
-  'PULL B': [['Landmine Rotation','3','12/side'],['Cable Woodchop','3','12/side'],['Side Plank w/ Hip Dip','3','10/side'],['Pallof Press','3','12 reps']],
-  'LEGS A': [['Hanging Tuck-to-Straight Leg Raise','3','12 reps'],['Ab Wheel','3','12 reps'],['Dead Bug','3','10/side'],['Dragon Flag Negative','3','5 reps']],
-  'LEGS B': [['Hanging Tuck-to-Straight Leg Raise','3','12 reps'],['Ab Wheel','3','12 reps'],['Dead Bug','3','10/side'],['Dragon Flag Negative','3','5 reps']],
-};
-// Phase 1 cardio. `rounds` is the starting round count, `maxRounds` the cap (cardioPlan() adjusts both per phase).
-const HIIT_NOTE = 'Work intervals in Zone 4–5 (160–185 bpm); rest intervals back to Zone 2–3 (136–155 bpm).';
-const Z2_NOTE = 'Full-sentence pace: incline treadmill 3.5–4 mph at 8–10%, or bike. Hold 136–148 bpm.';
-const CARDIO = {
-  'PUSH A': { type:'HIIT',   duration:15, rounds:10, maxRounds:10, recommended:'Rower',          alts:['Treadmill','Stationary Bike','Stair Master'], protocol:'30 sec on / 30 sec off', note:HIIT_NOTE },
-  'PULL A': { type:'HIIT',   duration:15, rounds:10, maxRounds:10, recommended:'Treadmill',      alts:['Rower','Stationary Bike','Stair Master'],     protocol:'40 sec on / 20 sec off', note:HIIT_NOTE },
-  'LEGS A': { type:'Zone 2', duration:30, recommended:'Stationary Bike', alts:['Treadmill','Rower','Stair Master'], note:Z2_NOTE },
-  'PUSH B': { type:'Zone 2', duration:25, recommended:'Treadmill',       alts:['Stationary Bike','Rower','Stair Master'], note:Z2_NOTE },
-  'PULL B': { type:'Zone 2', duration:25, recommended:'Treadmill',       alts:['Stationary Bike','Rower','Stair Master'], note:Z2_NOTE },
-  'LEGS B': { type:'Zone 2', duration:25, recommended:'Stationary Bike', alts:['Treadmill','Rower','Stair Master'], note:Z2_NOTE },
-};
-const Z2 = [136, 148];
+// The program comes from the `config/program` document when one exists and is valid, else from the built-in ProgramLib.BUILTIN.
+// Row formats the rest of the app uses (liftRows() applies the phase and deload changes for a date on top of these Phase 1 tables):
+//   LIFTING[session] = [name, method, sets, reps, rest, cue, kind]  kind: C compound · P primary (strength day) · S secondary · I isolation
+//   CORE[session] = [name, sets, target] · CARDIO[session] = { type, duration, rounds, maxRounds, recommended, alts, protocol, note, ... } · Z2 = [low, high] bpm
+const PROGRAM_LS = 'derek-tc-program-v1';
+let PROGRAM = null, PROGRAM_BUILT = null, LIFTING, CORE, CARDIO, Z2, programError = null;
+// Returns true when `doc` was valid and is now the active program. An invalid document leaves the current program in place.
+function applyProgram(doc) {
+  const built = ProgramLib.build(doc);
+  if (!built.ok) { programError = built.errors.slice(0, 5); return false; }
+  programError = null;
+  PROGRAM = built.doc; PROGRAM_BUILT = built;
+  LIFTING = built.lifting; CORE = built.core; CARDIO = built.cardio; Z2 = built.z2;
+  return true;
+}
+applyProgram(ProgramLib.BUILTIN);
 
 const LIFT_ALTS = {
   'Barbell Bench Press':['Chest · triceps',['Smith Machine Bench','Flat DB Press','Machine Chest Press','Weighted Push-Ups']],
@@ -819,6 +762,8 @@ function coreSpec(target) {
   return { lo, hi, unit, side: /side|leg/.test(target) };
 }
 function liftInc(session, name) {
+  const e = ProgramLib.bySession(PROGRAM, session, name) || (PROGRAM_BUILT.index[name] && { progression: PROGRAM_BUILT.index[name].progression });
+  if (e) return e.progression === 'lower' ? 10 : 5;
   return (/^LEGS/.test(session) || /deadlift|squat|leg press|hip thrust|lunge|rdl/i.test(name)) ? 10 : 5;
 }
 const fmtW = w => (w === null || w === undefined) ? '—' : (w === 0 ? 'BW' : String(w));
@@ -847,6 +792,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
 swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {});
+const cachedProgram = lsGet(PROGRAM_LS, null); if (cachedProgram) applyProgram(cachedProgram);
 if (['#lift','#core','#cardio','#body','#meals','#progress','#history'].includes(location.hash)) tab = location.hash.slice(1);
 
 let draftTimer = null;
@@ -857,6 +803,8 @@ const deloadSets = n => Math.max(1, Math.round(n * DELOAD_KEEP));
 const SUPERSETS = { 'PULL A': [['Single-Arm DB Row', 'Cable Rear Delt Fly']] };
 const WAVE_REPS = [5, 4, 3, 5, 4, 3];
 const isWave = p => /^Wave/.test(p[1]);
+// Stamped on drafts and workouts: plan code and the program (source letter + version) that built them.
+const planVer = () => `${PLAN_VER}:${ProgramLib.tag(PROGRAM)}`;
 function liftRows(session, k) {
   const base = LIFTING[session]; if (!base) return undefined;
   const { phase, deload } = programInfo(k), ph = phase.n, strength = isStrength(session);
@@ -888,8 +836,8 @@ function cardioPlan(session, k) {
   const b = CARDIO[session]; if (!b) return undefined;
   const { phase, deload } = programInfo(k), ph = phase.n, c = { ...b };
   if (c.type === 'HIIT') {
-    c.maxRounds = (ph === 2 || ph === 3) && session === 'PUSH A' ? 12 : 10;
-    c.baseRounds = 10;
+    c.maxRounds = (ph === 2 || ph === 3) && session === 'PUSH A' ? b.rounds + 2 : b.rounds;
+    c.baseRounds = b.rounds;
     c.rounds = deload ? deloadSets(c.baseRounds) : c.baseRounds;
     if (deload) c.maxRounds = c.rounds;
     c.duration = c.rounds + 5;
@@ -930,7 +878,7 @@ function hiitSeries(sessions) {
 }
 
 // ═══ Session + drafts ═══════════════════════════════════════════════
-const PLAN_VER = 6; // bump when the plan tables change so untouched drafts rebuild
+const PLAN_VER = 7; // bump when the plan tables change so untouched drafts rebuild
 function sessionFor(k) {
   if (sessOverride[k]) return sessOverride[k];
   for (const t of ['lift','core','cardio']) if (workouts[`${k}_${t}`]?.session) return workouts[`${k}_${t}`].session;
@@ -938,7 +886,7 @@ function sessionFor(k) {
 }
 
 function buildDraft(type, k, session) {
-  const base = { date:k, type, session, notes:'', exercises:[], ver:PLAN_VER };
+  const base = { date:k, type, session, notes:'', exercises:[], ver:planVer() };
   if (!session || session === 'REST') return base;
   if (type === 'lift') base.exercises = liftRows(session, k).map(([n,,s]) => { const swapKey = `${session}:${n}`; const name = swapMemory[swapKey] || n; return { planned:n, name, skipped:false, sets:Array.from({length:+s}, () => ({ w:null, r:null })) }; });
   if (type === 'core') base.exercises = coreRows(session, k).map(([n,s,t]) => ({ planned:n, name:n, skipped:false, unit:coreSpec(t).unit, sets:Array.from({length:+s}, () => ({ v:null, w:null })) }));
@@ -949,7 +897,7 @@ function buildDraft(type, k, session) {
 function getDraft(type) {
   const k = keyOf(selected), id = `${k}_${type}`, session = sessionFor(k);
   const d = drafts[id];
-  if (d && d.session === session && (d.ver === PLAN_VER || hasData(d) || workouts[id])) return d;
+  if (d && d.session === session && (d.ver === planVer() || hasData(d) || workouts[id])) return d;
   const w = workouts[id];
   drafts[id] = (w && w.session === session) ? stripMeta(clone(w)) : buildDraft(type, k, session);
   return drafts[id];
@@ -1157,6 +1105,7 @@ function guessDesc(n) {
 }
 const _mCache = new Map();
 function musclesOf(name) {
+  const p = PROGRAM_BUILT.index[name]; if (p) return p.muscleGroup;
   if (_mCache.has(name)) return _mCache.get(name);
   const desc = LIFT_LIB.get(name) ?? guessDesc(name);
   const gs = [...new Set(desc.split('·').map(partGroup).filter(Boolean))];
@@ -1693,7 +1642,7 @@ function cardioRow(ex, session, k) {
       <div class="plan-stats">
         <div><div class="field-label">Duration</div><div class="v">${rec.duration} min</div></div>
         <div><div class="field-label">Heart rate</div><div class="v">${rec.hr}</div></div>
-        ${hiit ? `<div><div class="field-label">Rounds</div><div class="v">${rec.rounds}</div></div><div><div class="field-label">Protocol</div><div class="s">${esc(c.protocol)}</div></div>` : ''}
+        ${hiit ? `<div><div class="field-label">Rounds</div><div class="v">${rec.rounds}</div></div><div><div class="field-label">Protocol</div><div class="s">${esc(c.protocol)}</div></div>${c.targetAvgWatts ? `<div><div class="field-label">Target avg watts</div><div class="v">${c.targetAvgWatts} W</div></div>` : ''}` : ''}
         <div style="grid-column:1/-1"><div class="field-label">Note</div><div class="s">${esc(c.note)}</div></div>
       </div>
       <div class="rec"><div class="rec-title">Target today</div><div class="why" style="margin-top:0">${esc(rec.why)}</div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}</div>
@@ -1997,14 +1946,15 @@ main.addEventListener('click', async e => {
     renderCalendar(); renderNow(); return;
   }
   if (act === 'copy') { const ta = document.getElementById('csvText'); try { await navigator.clipboard.writeText(ta.value); b.textContent = 'Copied'; } catch { ta.focus(); ta.select(); } return; }
+  if (act === 'prog-reset') { resetProgram(); return; }
   if (act === 'sync-on') { DriveDB.connect(); return; }
   if (act === 'sync-now') { DriveDB.syncNow(); return; }
   if (act === 'sync-off') { DriveDB.disconnect(); renderNow(); return; }
-  if (act === 'bk-export') { downloadText(`training-calendar-backup-${keyOf(new Date())}.json`, DriveDB.exportJSON(), 'application/json'); return; }
+  if (act === 'bk-export') { downloadText(`training-calendar-backup-${keyOf(new Date())}.json`, backupText(), 'application/json'); return; }
   if (act === 'bk-paste') { bkPasteOpen = true; renderNow(); document.getElementById('bkText')?.focus(); return; }
   if (act === 'bk-paste-close') { bkPasteOpen = false; renderNow(); return; }
   if (act === 'bk-paste-go') {
-    try { const n = DriveDB.importJSON(document.getElementById('bkText').value.trim()); bkPasteOpen = false; renderNow(); alert(`Imported ${n} records.`); }
+    try { const msg = importBackup(document.getElementById('bkText').value.trim()); bkPasteOpen = false; renderNow(); alert(msg); }
     catch (err) { alert('Could not import: ' + err.message); }
     return;
   }
@@ -2738,6 +2688,13 @@ function subscribeNew() {
   sub('meals', () => mealLog, m => { mealLog = m; }, LS2.meals);
   sub('foods', () => foods, m => { foods = m; }, LS2.foods);
   db.doc('config/plan').onSnapshot(s => { if (s.exists) { plan = s.data(); lsSet(LS2.plan, plan); afterSnap(); } }, () => {});
+  // config/program: use it when it exists and validates. When the store has none after a real sync, seed it from the built-in program.
+  let seeded = false;
+  db.doc('config/program').onSnapshot(s => {
+    if (s.exists) { const d = s.data(); if (applyProgram(d)) lsSet(PROGRAM_LS, d); afterSnap(); return; }
+    if (PROGRAM.source !== 'built-in') { applyProgram(ProgramLib.BUILTIN); try { localStorage.removeItem(PROGRAM_LS); } catch {} afterSnap(); }
+    if (!seeded) { seeded = true; db.doc('config/program').set(ProgramLib.BUILTIN).catch(() => {}); }
+  }, () => {});
 }
 function afterSnap() {
   renderCalendar();
@@ -2786,6 +2743,17 @@ function onSyncState() {
   if (st !== 'syncing') afterSnap();
 }
 let bkPasteOpen = false;
+function programStatus() {
+  const p = PROGRAM, usingDoc = p.source !== 'built-in';
+  return `<div class="note" style="margin-top:10px">Program: version ${p.version} · ${esc(p.source)}${programError ? ` · <b style="color:var(--bad,#c0392b)">Ignored an invalid config/program (${esc(programError[0])})</b>` : ''}${usingDoc ? ` <button class="mini" data-act="prog-reset">Use built-in program</button>` : ''}</div>`;
+}
+function resetProgram() {
+  if (!confirm('Replace the current program with the built-in program? Your logged workouts are not changed.')) return;
+  const doc = { ...clone(ProgramLib.BUILTIN), version: PROGRAM.version + 1 };
+  applyProgram(doc); lsSet(PROGRAM_LS, doc);
+  if (db) db.doc('config/program').set(doc).catch(() => {});
+  renderCalendar(); renderNow();
+}
 function syncCard() {
   if (!window.DriveDB || window.claude?.use) return '';
   const st = DriveDB.state(), ls = DriveDB.lastSync();
@@ -2798,7 +2766,25 @@ function syncCard() {
       ${DriveDB.linked() && st !== 'needs-auth' ? `<button class="mini" data-act="sync-now">Sync now</button><button class="mini" data-act="sync-off">Disconnect</button>` : `<button class="primary" data-act="sync-on" style="margin-left:0">Connect Google Drive</button>`}
       <button class="mini" data-act="bk-export">Export backup</button><button class="mini" data-act="bk-import">Import backup file</button><button class="mini" data-act="bk-paste">Paste backup text</button>
       <input type="file" id="bkFile" accept="application/json,.json" hidden>
-    </div>${bkPasteOpen ? `<textarea id="bkText" placeholder="Paste the backup text here" style="width:100%;min-height:120px;margin-top:10px;font-family:var(--mono);font-size:.72rem"></textarea><div class="export-row" style="margin:8px 0 0"><button class="primary" data-act="bk-paste-go" style="margin-left:0">Import</button><button class="mini" data-act="bk-paste-close">Cancel</button></div>` : ''}</div>`;
+    </div>${programStatus()}${bkPasteOpen ? `<textarea id="bkText" placeholder="Paste the backup text here" style="width:100%;min-height:120px;margin-top:10px;font-family:var(--mono);font-size:.72rem"></textarea><div class="export-row" style="margin:8px 0 0"><button class="primary" data-act="bk-paste-go" style="margin-left:0">Import</button><button class="mini" data-act="bk-paste-close">Cancel</button></div>` : ''}</div>`;
+}
+// The backup always carries config/program: the stored one, or the built-in program (u:0, so any real edit wins on restore).
+function backupText() {
+  const b = JSON.parse(DriveDB.exportJSON());
+  if (!b.docs['config/program'] || b.docs['config/program'].d == null) b.docs['config/program'] = { u: 0, d: ProgramLib.BUILTIN };
+  return JSON.stringify(b);
+}
+// Restores a backup. A program document that fails validation is skipped (the rest still imports) and reported.
+function importBackup(text) {
+  const obj = JSON.parse(text);
+  let skipped = '';
+  const pr = obj && obj.docs && obj.docs['config/program'];
+  if (pr && pr.d != null) {
+    const errs = ProgramLib.validate(pr.d);
+    if (errs.length) { delete obj.docs['config/program']; skipped = `\n\nThe program in this backup was not imported because it is not valid (${errs.slice(0, 3).join('; ')}). The current program is unchanged.`; }
+  }
+  const n = DriveDB.importJSON(JSON.stringify(obj));
+  return `Imported ${n} records.${skipped}`;
 }
 function downloadText(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -2810,7 +2796,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', async e => {
   if (e.target.id !== 'bkFile' || !e.target.files[0]) return;
-  try { const n = DriveDB.importJSON(await e.target.files[0].text()); alert(`Imported ${n} records.`); }
+  try { alert(importBackup(await e.target.files[0].text())); }
   catch (err) { alert('Could not import: ' + err.message); }
   e.target.value = '';
 });

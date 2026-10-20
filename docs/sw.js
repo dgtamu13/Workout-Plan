@@ -1,11 +1,12 @@
 // Bump CACHE when shipping changes so clients drop old assets.
-const CACHE = 'training-calendar-v15';
+const CACHE = 'training-calendar-v16';
 const ASSETS = [
   './',
   'index.html',
   'manifest.webmanifest',
   'vendor/chart.umd.js',
   'drive-sync.js',
+  'program.js',
   'icons/icon.svg',
   'icons/icon-180.png',
   'icons/icon-192.png',

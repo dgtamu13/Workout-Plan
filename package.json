@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test": "node scripts/verify-plan.js"
+    "test": "node scripts/verify-plan.js && node scripts/verify-program.js"
   },
   "repository": {
     "type": "git",
