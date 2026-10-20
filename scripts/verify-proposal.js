@@ -83,8 +83,7 @@ check('HIIT rounds of exactly 16 and Zone 2 of exactly 60 minutes are allowed', 
 });
 rejects('Zone 2 longer than 60 minutes', f => { f.cardio[1].durationMin = 61; }, /61 minutes is over the limit of 60/);
 rejects('a Zone 2 heart rate outside 136–148', f => { f.cardio[1].hrHigh = 155; }, /136–148/);
-rejects('HIIT on a legs day', f => { Object.assign(f.cardio[0], { session: 'LEGS B' }); }, /LEGS B is a Zone 2 session|push and pull days only/);
-rejects('changing a session from HIIT to Zone 2', f => { f.cardio[1] = { date: '2026-11-04', session: 'PULL A', type: 'zone2', durationMin: 30, hrLow: 136, hrHigh: 148 }; }, /PULL A is a HIIT session/);
+rejects('HIIT on a legs day', f => { Object.assign(f.cardio[0], { session: 'LEGS B' }); }, /only push and pull sessions can switch|push and pull days only/);
 rejects('a cardio date outside the week', f => { f.cardio[0].date = '2026-11-20'; }, /must fall in the week starting 2026-11-03/);
 rejects('a protein change', f => { f.meals.targets.training.p = 205; }, /protein must not change \(it is 200 g/);
 rejects('a calorie change of 151', f => { f.meals.targets.training.kcal = 2651; }, /limited to 150 kcal.*151/);
@@ -118,6 +117,43 @@ rejects('a new exercise missing required fields', f => { f.lifting['PUSH A'][2] 
 rejects('a bad rep range on an existing exercise', f => { f.lifting['PUSH A'][0].reps = { low: 15, high: 10 }; }, /lifting\["PUSH A"\]\[0\]\.reps/);
 rejects('two swaps in one session in one week', f => { f.lifting['PUSH A'][3] = { name: 'Cable Shoulder Press', muscleGroup: ['Shoulders'], sets: 3, reps: { low: 12, high: 15 }, rir: { low: 1, high: 2 }, restSec: { low: 60, high: 90 }, progression: 'upper' }; f.changeLog.find(c => c.id === 'c3').refs.push('lifting/PUSH A/Cable Shoulder Press', 'lifting/PUSH A/Machine Shoulder Press'); }, /only one swap is allowed per session per week/);
 rejects('a swap to a different muscle group', f => { f.lifting['PUSH A'][2].muscleGroup = ['Triceps']; }, /works Triceps but Pec Deck \/ Cable Fly, the exercise it replaces, works Chest/);
+rejects('a swap to a different movement pattern', f => { f.lifting['PUSH A'][2].pattern = 'vertical-press'; }, /Cable Crossover is a vertical-press but Pec Deck \/ Cable Fly, the exercise it replaces, is a fly/);
+rejects('a swap whose new exercise has no pattern', f => { delete f.lifting['PUSH A'][2].pattern; }, /Cable Crossover needs a "pattern"/);
+const logs = (dates, reps, name = 'Pec Deck / Cable Fly') => Object.fromEntries(dates.map(d => [`${d}_lift`, { date: d, type: 'lift', exercises: [{ name, planned: name, skipped: false, sets: reps.map(r => ({ w: 100, r })) }] }]));
+check('Stall check: a swap needs 3 logged sessions in a row that missed the top of the rep range', () => {
+  const stalled = logs(['2026-10-20', '2026-10-27', '2026-10-30'], [12, 13, 13]);
+  assert.ok(review(EXAMPLE, { ...ctx(), workouts: stalled }).ok, 'three stalled sessions');
+  const few = review(EXAMPLE, { ...ctx(), workouts: logs(['2026-10-27', '2026-10-30'], [12, 13, 13]) });
+  assert.ok(!few.ok && /has 2 logged sessions, and a stall swap needs 3 in a row without reaching the top of the rep range \(15 reps on every set\)/.test(few.errors.join()), few.errors.join());
+  const hit = review(EXAMPLE, { ...ctx(), workouts: { ...stalled, '2026-10-30_lift': logs(['2026-10-30'], [15, 15, 15])['2026-10-30_lift'] } });
+  assert.ok(!hit.ok && /reached the top of the rep range \(15 reps on every set\) on 2026-10-30/.test(hit.errors.join()), hit.errors.join());
+  assert.ok(review(EXAMPLE, { ...ctx(), workouts: { ...logs(['2026-09-01'], [15, 15, 15]), ...stalled } }).ok, 'an older session at the top is outside the last 3');
+  assert.ok(!review(EXAMPLE, { ...ctx(), workouts: {} }).ok, 'no history at all is not a stall');
+});
+check('Stall check ignores skipped exercises and sessions after the plan was generated', () => {
+  const w = logs(['2026-10-20', '2026-10-27', '2026-10-30'], [12, 13, 13]);
+  w['2026-10-30_lift'].exercises[0].skipped = true;
+  assert.ok(!review(EXAMPLE, { ...ctx(), workouts: w }).ok, 'only two counted sessions');
+  assert.ok(!review(EXAMPLE, { ...ctx(), workouts: logs(['2026-11-10', '2026-11-12', '2026-11-14'], [12, 13, 13]) }).ok, 'future logs do not count');
+});
+const switchTo = (f, session, e) => { f.cardio.push(Object.assign({ date: '2026-11-06', session }, e)); f.changeLog.push({ id: 'c9', area: 'cardio', tag: 'auto', kind: 'cardio-progression', refs: [`cardio/${session}`], reason: 'Add a third HIIT day.' }); };
+check('A push or pull Zone 2 session can switch to HIIT (always needs approval); other sessions cannot', () => {
+  const f = mut(x => switchTo(x, 'PUSH B', { type: 'hiit', machine: 'Rower', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 }));
+  const r = review(f); assert.ok(r.ok, r.errors.join());
+  const ch = byRef(r, 'cardio/PUSH B/type'); assert.ok(ch.tag === 'approval' && ch.forced && /^Zone 2 · 25 min/.test(ch.from) && /^HIIT · 8 rounds/.test(ch.to));
+  assert.ok(!r.changes.some(c => c.ref.startsWith('cardio/PUSH B/') && c.ref !== 'cardio/PUSH B/type'));
+  const c = ctx(), res = P.apply(c, r.proposal, r.changes, [ch.id]);
+  assert.deepStrictEqual(res.program.cardio.sessions['PUSH B'], { type: 'HIIT', machine: 'Rower', alternatives: ['Stationary Bike', 'Rower', 'Stair Master'], rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 });
+  assert.deepStrictEqual(ProgramLib.validate(res.program), []);
+  assert.ok(!review(mut(x => switchTo(x, 'LEGS B', { type: 'hiit', machine: 'Rower', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 }))).ok);
+});
+check('HIIT sessions per week are capped at 4', () => {
+  const four = review(mut(x => { switchTo(x, 'PUSH B', { type: 'hiit', machine: 'Rower', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 }); x.cardio.push({ date: '2026-11-07', session: 'PULL B', type: 'hiit', machine: 'Treadmill', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 150 }); x.changeLog[x.changeLog.length - 1].refs.push('cardio/PULL B'); }));
+  assert.ok(four.ok, four.errors.join()); // PUSH A, PULL A, PUSH B, PULL B is 4
+  const p = ctx(); p.program.cardio.sessions['LEGS B'] = { ...p.program.cardio.sessions['PUSH A'] }; // a fifth HIIT session already in the program
+  const five = review(mut(x => { switchTo(x, 'PUSH B', { type: 'hiit', machine: 'Rower', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 }); x.cardio.push({ date: '2026-11-07', session: 'PULL B', type: 'hiit', machine: 'Treadmill', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 150 }); x.changeLog[x.changeLog.length - 1].refs.push('cardio/PULL B'); }), p);
+  assert.ok(!five.ok && /5 HIIT sessions a week is over the limit of 4/.test(five.errors.join()), five.errors.join());
+});
 rejects('a change with no changeLog reason', f => { f.changeLog = f.changeLog.filter(c => c.id !== 'c2'); }, /Leg Press: Target load.*has no reason/);
 rejects('an approval-tagged entry with no approvals item', f => { f.approvals = f.approvals.filter(a => a.changeId !== 'c7'); }, /"c7" is tagged approval but has no matching approvals entry/);
 rejects('an approvals item for an auto entry', f => { f.approvals.push({ changeId: 'c1', question: 'Really?' }); }, /"c1" is tagged auto, not approval/);
@@ -212,7 +248,7 @@ check('PLAN_SCHEMA.md has a full example identical to the shipped example file, 
 });
 check('The limits table in PLAN_SCHEMA.md matches the limits in the code', () => {
   const md = fs.readFileSync(path.join(root, 'PLAN_SCHEMA.md'), 'utf8');
-  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, zone2Hr: [136, 148] });
+  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148] });
   assert.ok(/At most 16/.test(md) && /At most 60 minutes/.test(md) && /at most 150 kcal/.test(md) && /14 days/.test(md) && /136–148/.test(md));
 });
 

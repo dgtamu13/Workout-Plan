@@ -48,7 +48,7 @@ The exercises, core circuits and cardio prescriptions are data, not code. The ap
 
 ### Google Sheet and weekly plan proposals
 
-**Data & sync → Google Sheet** (History tab) publishes workouts, body, meals and check-ins to a Sheet in a Drive folder called "Training Calendar Data" after every submit. It needs the Google Sheets API turned on for the Cloud project and the `drive.file` and `spreadsheets` scopes on the consent screen, then tap Connect.
+**Data & sync → Google Sheet** (History tab) publishes workouts, body, meals and check-ins, plus the current program and meal plan (Program and Meal Plan tabs), to a Sheet in a Drive folder called "Training Calendar Data" after every submit. It needs the Google Sheets API turned on for the Cloud project and the `drive.file` and `spreadsheets` scopes on the consent screen, then tap Connect.
 
 The training agent writes `next-week-plan.json` to the same folder. The app checks for it on open and when you return to the tab; a **New** badge appears on History when its `generatedAt` is newer than the last plan you applied. The review screen shows each change by lifting, core, cardio and meals with the old value, new value and the agent's reason, and you accept or reject each one. Changes tagged `auto` start accepted, `approval` ones start unaccepted. Applying writes `config/program` and `config/plan` and records what was accepted and rejected in `applied-plans`. The file is validated first (unknown fields, HIIT rounds over 16, Zone 2 over 60 minutes, protein changes and calorie changes over 150 kcal are rejected). The format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); `scripts/verify-proposal.js` tests it.
 

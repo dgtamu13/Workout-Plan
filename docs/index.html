@@ -990,7 +990,20 @@ function firstSession(name, p, session, k, lo, hi, n) {
   return { targets:Array.from({length:n}, (_, i) => ({ w:null, r: wave ? WAVE_REPS[i % 6] : r0 })), last:null, wave,
     status:{ cls:'calib', text:'Calibrate' }, why };
 }
-function liftRec(name, p, session, k) { return applyReadiness(planLiftRec(name, p, session, k), k); }
+function liftRec(name, p, session, k) { return applyReadiness(applyAgentTarget(planLiftRec(name, p, session, k), name, session, k), k); }
+// A target load written by the training agent (targetLb on the program exercise) replaces the computed weight until a session reaches it,
+// after which the normal progression takes over. Deload weeks keep the weights you last used.
+function applyAgentTarget(rec, name, session, k) {
+  const e = ProgramLib.bySession(PROGRAM, session, name), T = e && e.targetLb;
+  if (!T || programInfo(k).deload) return rec;
+  const W = rec.last ? Math.max(...rec.last.sets.map(s => num(s.w) || 0)) : 0;
+  if (W >= T) return rec;
+  if (rec.wave) { const a = round25(T * 0.9), b = round25(T * 0.95), ws = [a, b, T, a, b, T]; rec.targets = rec.targets.map((t, i) => ({ ...t, w: ws[i % 6] })); rec.waveTo = `${T} lb peak · 5/4/3 ×2`; }
+  else rec.targets = rec.targets.map(t => ({ ...t, w: T }));
+  rec.why = `Training agent target: ${T} lb. ${rec.why}`;
+  rec.status = { cls: 'up', text: `Agent target ${T} lb` };
+  return rec;
+}
 function applyReadiness(rec, k) {
   const r = readiness(k);
   if (!r) return rec;
@@ -2869,10 +2882,38 @@ function fatigueRows() {
   });
   return rows;
 }
-// The four tabs of the Google Sheet. Workouts and Body use exactly the columns of the CSV exports.
+// The tabs of the Google Sheet. Workouts and Body use exactly the columns of the CSV exports. Program and Meal Plan show the training
+// agent what it is changing: the current config/program and config/plan, with the calorie lockout.
+const PROGRAM_COLS = ['Area', 'Session', 'Order', 'Name', 'Muscle Group', 'Pattern', 'Sets', 'Reps Low', 'Reps High', 'Per Side', 'RIR Low', 'RIR High', 'Rest Low (s)', 'Rest High (s)', 'Progression', 'Role', 'Methods', 'Target Lb', 'Cue / Target', 'Type', 'Machine', 'Rounds', 'Work (s)', 'Rest (s)', 'Target Avg Watts', 'Duration (min)', 'HR Low', 'HR High'];
+function programRows() {
+  const rows = [PROGRAM_COLS], add = o => rows.push(PROGRAM_COLS.map(c => o[c] ?? ''));
+  const p = PROGRAM, rest = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
+  add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
+  add({ Area:'Meta', Name:'deloadWeeks (pull-forward)', 'Cue / Target':(p.deloadWeeks || []).join(', ') });
+  add({ Area:'Meta', Name:'scheduled deload weeks', 'Cue / Target':[...deloadWeeks()].sort((a, b) => a - b).join(', ') });
+  SESSIONS.forEach(s => p.sessions[s].exercises.forEach((e, i) => { const [rl, rh] = rest(e.restSec);
+    add({ Area:'Lifting', Session:s, Order:i + 1, Name:e.name, 'Muscle Group':[].concat(e.muscleGroup).join(' / '), Pattern:e.pattern, Sets:e.sets, 'Reps Low':e.reps.low, 'Reps High':e.reps.high, 'Per Side':e.perSide, 'RIR Low':e.rir.low, 'RIR High':e.rir.high, 'Rest Low (s)':rl, 'Rest High (s)':rh, Progression:e.progression, Role:e.role || 'compound', Methods:(e.methods || []).join(', '), 'Target Lb':e.targetLb, 'Cue / Target':e.cue }); }));
+  Object.entries(p.core.circuits).forEach(([c, x]) => x.exercises.forEach((e, i) => add({ Area:'Core', Session:`Circuit ${c} (${x.sessions.join(', ')})`, Order:i + 1, Name:e.name, Sets:e.sets, 'Cue / Target':e.target })));
+  SESSIONS.forEach(s => { const c = p.cardio.sessions[s];
+    add({ Area:'Cardio', Session:s, Type:c.type, Machine:c.machine, Rounds:c.rounds, 'Work (s)':c.workSec, 'Rest (s)':c.restSec, 'Target Avg Watts':c.targetAvgWatts, 'Duration (min)':c.durationMin, 'HR Low':c.hrLow, 'HR High':c.hrHigh }); });
+  return rows;
+}
+const MEAL_COLS = ['Area', 'Menu / Day', 'Slot', 'Item', 'Food ID', 'Training g', 'Rest g', 'kcal', 'Protein (g)', 'Fat (g)', 'Carbs (g)'];
+function mealPlanRows() {
+  const rows = [MEAL_COLS], add = o => rows.push(MEAL_COLS.map(c => o[c] ?? ''));
+  const last = window.PlanProposal ? PlanProposal.lastCalorieChange(Object.values(appliedPlans)) : null, day = t => new Date(t).toISOString().slice(0, 10);
+  add({ Area:'Meta', 'Menu / Day':'last calorie change', Item:last ? day(last) : 'never' });
+  add({ Area:'Meta', 'Menu / Day':'calorie lockout ends', Item:last ? day(last + 14 * 864e5) : '' });
+  if (!plan) return rows;
+  Object.entries(plan.targets || {}).forEach(([d, t]) => add({ Area:'Target', 'Menu / Day':d, Item:'Daily target', kcal:t.kcal, 'Protein (g)':t.p, 'Fat (g)':t.f, 'Carbs (g)':t.c }));
+  Object.entries(plan.menus || {}).forEach(([k, m]) => { add({ Area:'Menu', 'Menu / Day':k, Item:m.name });
+    (m.items || []).forEach(it => add({ Area:'Menu item', 'Menu / Day':k, Slot:it.slot, Item:(foods[it.food] || {}).name || it.food, 'Food ID':it.food, 'Training g':it.train, 'Rest g':it.rest })); });
+  Object.entries(foods || {}).sort().forEach(([id, f]) => add({ Area:'Food (per 100 g)', Item:f.name, 'Food ID':id, kcal:f.kcal, 'Protein (g)':f.p, 'Fat (g)':f.f, 'Carbs (g)':f.c }));
+  return rows;
+}
 function sheetTables() {
   const pad = rows => rows.map(r => r.length >= rows[0].length ? r : [...r, ...Array(rows[0].length - r.length).fill('')]);
-  return { Workouts: pad(workoutRows(Object.values(workouts))), Body: bodyRows(), Meals: mealRows(), Fatigue: fatigueRows() };
+  return { Workouts: pad(workoutRows(Object.values(workouts))), Body: bodyRows(), Meals: mealRows(), Fatigue: fatigueRows(), Program: programRows(), 'Meal Plan': mealPlanRows() };
 }
 const sheetsPublishSoon = () => { try { window.SheetsSync?.schedule(); } catch {} };
 const sheetsOn = () => !!(window.SheetsSync && window.PlanProposal && !window.claude?.use);
@@ -2885,7 +2926,7 @@ if (window.SheetsSync) {
   SheetsSync.configure({ getTables: sheetTables });
   SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; afterSnap(); });
 }
-const reviewCtx = () => ({ program: PROGRAM, plan, foods, applied: Object.values(appliedPlans) });
+const reviewCtx = () => ({ program: PROGRAM, plan, foods, applied: Object.values(appliedPlans), workouts });
 const appliedList = () => Object.values(appliedPlans);
 // True when the file in the Drive folder has a generatedAt later than every plan applied so far.
 const newProposalReady = () => !!(proposalSeen && window.PlanProposal && PlanProposal.isNewer(proposalSeen.generatedAt, appliedList()));

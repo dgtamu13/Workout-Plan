@@ -9,7 +9,7 @@
     "PUSH A": [
       { "name": "Incline DB Press", "targetLb": 55 },
       { "name": "Cable Lateral Raise" },
-      { "name": "Cable Crossover", "muscleGroup": ["Chest"], "sets": 3, "reps": { "low": 12, "high": 15 }, "rir": { "low": 0, "high": 1 }, "restSec": { "low": 60, "high": 90 }, "progression": "upper", "role": "isolation", "cue": "Low-to-high path, 1 sec squeeze" },
+      { "name": "Cable Crossover", "muscleGroup": ["Chest"], "pattern": "fly", "sets": 3, "reps": { "low": 12, "high": 15 }, "rir": { "low": 0, "high": 1 }, "restSec": { "low": 60, "high": 90 }, "progression": "upper", "role": "isolation", "cue": "Low-to-high path, 1 sec squeeze" },
       { "name": "Machine Shoulder Press" },
       { "name": "Overhead Cable Extension" },
       { "name": "Tricep Pushdown" },

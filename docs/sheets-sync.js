@@ -7,7 +7,7 @@
   const CLIENT_ID = '358985473662-1qsq1f7ku4c409uhj7a185rlq241ses0.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
   const FOLDER_NAME = 'Training Calendar Data', SHEET_NAME = 'Training Calendar', PLAN_FILE = 'next-week-plan.json';
-  const TABS = ['Workouts', 'Body', 'Meals', 'Fatigue'];
+  const TABS = ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan'];
   const STORE_KEY = 'derek-tc-sheets-v1', TOKEN_KEY = 'derek-tc-sheets-token', DRIVE_TOKEN_KEY = 'derek-tc-drive-token';
   const DRIVE = 'https://www.googleapis.com/drive/v3', UPLOAD = 'https://www.googleapis.com/upload/drive/v3', SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
   const PLACEHOLDER = {
@@ -132,6 +132,7 @@
     });
     if (requests.length) await post(`${SHEETS}/${sheetId}:batchUpdate`, { requests }, interactive);
   }
+  const a1 = tab => `'${tab}'`; // quoted so tab names with spaces work in A1 notation
   const clean = v => (v === null || v === undefined || (typeof v === 'number' && !Number.isFinite(v))) ? '' : (typeof v === 'number' || typeof v === 'boolean') ? v : String(v);
 
   async function publishOnce(interactive) {
@@ -139,8 +140,8 @@
     const sheetId = await ensureSheet(interactive);
     await ensurePlan(interactive);
     await ensureTabs(sheetId, tables, interactive);
-    await post(`${SHEETS}/${sheetId}/values:batchClear`, { ranges: TABS }, interactive);
-    await post(`${SHEETS}/${sheetId}/values:batchUpdate`, { valueInputOption: 'RAW', data: TABS.map(tab => ({ range: `${tab}!A1`, values: (tables[tab] || []).map(r => r.map(clean)) })) }, interactive);
+    await post(`${SHEETS}/${sheetId}/values:batchClear`, { ranges: TABS.map(a1) }, interactive);
+    await post(`${SHEETS}/${sheetId}/values:batchUpdate`, { valueInputOption: 'RAW', data: TABS.map(tab => ({ range: `${a1(tab)}!A1`, values: (tables[tab] || []).map(r => r.map(clean)) })) }, interactive);
   }
   // A cached id can go stale (file deleted or moved to trash): forget the ids once and look everything up again.
   async function withFreshIds(fn) {
