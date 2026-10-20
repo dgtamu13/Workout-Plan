@@ -37,6 +37,7 @@ The agent runs once a week. It reads the Training Calendar Sheet, decides next w
   - The app checks all of the above against the workout log and rejects the file otherwise: it needs 3 logged sessions of the exercise in a row where at least one set fell short of the top of the range, and not a single one that reached it on every set.
   - The swap is pre-accepted in the review. The user can reject it, or undo the whole plan after applying it.
 - Any other added or removed exercise needs approval.
+- Match logged sessions by the `Exercise` column. If the user swapped an exercise on the day (`Exercise` differs from `Planned Exercise`), that session does not count for the program exercise and is not a stall.
 
 ## 3. Nutrition protocol
 
@@ -95,12 +96,13 @@ The agent reads the "Training Calendar" Sheet in the "Training Calendar Data" fo
 | `Fatigue` | Readiness check-ins for the pull-forward rule. |
 | `Program` | The current program: exact exercise names, muscle groups, patterns, ranges, current `targetLb`, cardio prescriptions, deload weeks. |
 | `Meal Plan` | Current targets, menus, foods and per-100 g macros, last calorie change and lockout end. |
+| `Plan` | Where the agent writes the plan (output only; never read it as data). |
 
 Use the names, food ids and patterns exactly as they appear in the `Program` and `Meal Plan` tabs.
 
 ## 6. Output contract
 
-The agent writes `next-week-plan.json`. **Edit the existing file in place** (the app only sees files it created; a new file with the same name is invisible to it) and write a new `generatedAt` every time. The app shows a badge when `generatedAt` is newer than the last applied plan.
+The agent writes the plan JSON into the **`Plan` tab** of the Sheet: clear `Plan!A:A`, then write the text from `Plan!A1` down column A in chunks of at most 40,000 characters per row (details in PLAN_SCHEMA.md). Do not create a new `next-week-plan.json` (the app cannot see files it did not create, and the Drive connector cannot overwrite one). Write a new `generatedAt` every time. The app shows a badge when `generatedAt` is newer than the last applied plan.
 
 Sections: `lifting`, `core`, `cardio`, `meals`, `deload`, `changeLog`, `approvals`. Full definitions, the paths used in `changeLog.refs`, and a complete example are in [PLAN_SCHEMA.md](PLAN_SCHEMA.md).
 
@@ -142,10 +144,10 @@ These stay with the agent:
 3. For each lifting exercise: double progression -> `targetLb`; 3-session stall -> a swap.
 4. Cardio: HIIT and Zone 2 progression within the ceilings.
 5. Calories: compute the 7-day average trend; if a calorie change is allowed (outside the lockout), propose +/-100-150 kcal with protein unchanged, tagged for approval; otherwise put any flag in `note`.
-6. Write `changeLog` (a reason for every change) and `approvals`, set a new `generatedAt`, and edit `next-week-plan.json` in place. Write the readable note beside it.
+6. Write `changeLog` (a reason for every change) and `approvals`, set a new `generatedAt`, and write the JSON into the Sheet's `Plan` tab. Write the readable note beside it.
 
 ## 9. Open items
 
-- Where and when the agent runs, and how it is given Drive access to edit `next-week-plan.json` by file id.
+- Where the agent runs (currently a Claude scheduled task with the Google Drive and Sheets connectors).
 - Whether the readable "what changed and why" note should be a Doc or a Markdown file, and its name.
 - Minimum HIIT sessions (3) is not enforced by the app; revisit once the first weeks of real data are in.
