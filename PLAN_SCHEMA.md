@@ -13,6 +13,16 @@ Keep editing **the same file** rather than creating a new one: the app created i
 3. **Review screen.** Changes are grouped Lifting, Core, Cardio, Meals. Each shows the old value, the new value and the `reason` from `changeLog`, with **Accept** and **Reject**. Changes tagged `auto` start accepted (this includes stall swaps, which the agent makes on its own); changes tagged `approval` start unaccepted. Every decision can be changed before you apply.
 4. **Apply.** Accepted lifting, core and cardio changes are written to `config/program` (new `version`, `source: "agent"`; see [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md)). Accepted meal changes are written to `config/plan`. A record of what was accepted and rejected is written to the `applied-plans` collection. The newest applied plan can be **undone** from the Applied plans list, which restores the program and meal plan as they were before it.
 
+## What the agent can read
+
+The "Training Calendar" Sheet in the same folder is updated after every submit. Read it before writing a plan:
+
+| Tab | Contents |
+|---|---|
+| `Workouts`, `Body`, `Meals`, `Fatigue` | The same columns as the CSV exports: sets, weights and reps, body weight, meals eaten, readiness check-ins. |
+| `Program` | The current `config/program`. One row per lifting exercise (session, order, name, muscle group, pattern, sets, rep and RIR ranges, rest, progression, role, methods, target lb, cue), per core exercise (by circuit) and per cardio session, plus `Meta` rows for the version, source, pull-forward deload weeks and the scheduled deload weeks. Use these exact names and patterns in the plan file. |
+| `Meal Plan` | The current `config/plan`: the training and rest day targets, each menu with its items and grams, every food with its per-100 g macros, and `Meta` rows for the date of the last calorie change and when the 14-day lockout ends. |
+
 ## Top level
 
 | Field | Type | Notes |
@@ -51,8 +61,9 @@ For an exercise that is already in the program, send `name` plus only the fields
 | `methods` | list of text | Method tags such as `"Drop Set"`. `[]` clears them. |
 | `role` | `"compound"`, `"primary"`, `"secondary"`, `"isolation"` | |
 | `cue` | text | |
-| `targetLb` | number | The target load for the coming week. This is how a double-progression load increase is expressed. |
+| `targetLb` | number | The target load for the coming week. The app uses it in place of its own computed weight for that exercise until you log that weight or more, after which its normal progression takes over. Deload weeks keep the weights you last used. |
 | `muscleGroup` | list of 1–2 text | |
+| `pattern` | text | Movement pattern (see [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md)). Required on the new exercise in a stall swap. |
 
 A **new** exercise must send `name`, `muscleGroup`, `sets`, `reps`, `rir`, `restSec` and `progression`. The result must still be a valid program (the same checks as [PROGRAM_SCHEMA.md](PROGRAM_SCHEMA.md)).
 
@@ -70,7 +81,7 @@ HIIT (push and pull days only):
 |---|---|---|
 | `date` | `YYYY-MM-DD` | Required, inside the week. |
 | `session` | session name | Required. |
-| `type` | `"hiit"` | The session must already be a HIIT session. |
+| `type` | `"hiit"` | A push or pull session that is currently Zone 2 can switch to HIIT. The switch is a separate change that always needs your approval. |
 | `machine` | text (optional) | Changing machine or the work:rest protocol resets the Progress watts baseline. |
 | `rounds` | whole number | Required. **At most 16.** |
 | `workSec` | whole number | Required. 5–600. |
@@ -81,8 +92,8 @@ Zone 2:
 
 | Field | Type | Notes |
 |---|---|---|
-| `date`, `session`, `machine` | | As above. The session must already be a Zone 2 session. |
-| `type` | `"zone2"` | |
+| `date`, `session`, `machine` | | As above. |
+| `type` | `"zone2"` | A push or pull session that is currently HIIT can switch to Zone 2 (needs approval). Legs sessions cannot switch. |
 | `durationMin` | whole number | Required. **At most 60.** |
 | `hrLow`, `hrHigh` | whole numbers | Required. Inside the **136–148 bpm** band, `hrLow` ≤ `hrHigh`. |
 
@@ -146,9 +157,10 @@ Entries the agent tags `approval` start unaccepted. In addition, the app **alway
 
 - every meal change (calories, macros, menus),
 - a deload pull-forward,
-- adding or removing an exercise that is not part of a stall swap.
+- adding or removing an exercise that is not part of a stall swap,
+- switching a cardio session between HIIT and Zone 2.
 
-`auto` is for changes such as load increases from double progression, core target bumps, cardio progression and **stall swaps**. A stall swap is an entry with `kind: "stall-swap"` that covers one removed exercise and one added exercise in the same session. It is pre-accepted, and the two halves always go together: rejecting either one rejects both. The agent may still tag a swap `approval` when it wants you to confirm it first.
+`auto` is for changes such as load increases, core target bumps, cardio progression and **stall swaps**. Switching a cardio session between HIIT and Zone 2 always needs approval. A stall swap is an entry with `kind: "stall-swap"` that covers one removed exercise and one added exercise in the same session. It is pre-accepted, and the two halves always go together: rejecting either one rejects both. The agent may still tag a swap `approval` when it wants you to confirm it first.
 
 ## Limits that reject the file
 
@@ -159,12 +171,13 @@ Entries the agent tags `approval` start unaccepted. In addition, the app **alway
 | Zone 2 duration | At most 60 minutes, with `hrLow`/`hrHigh` inside 136–148 bpm. |
 | Protein | Must not change. |
 | Calories | A change of at most 150 kcal per target (training and rest are separate targets), and not within 14 days of the last applied calorie change. |
-| Stall swaps | One exercise out and one in, at most one swap per session per week, and the new exercise's first `muscleGroup` must match the one it replaces. |
+| Stall swaps | One exercise out and one in, at most one swap per session per week. The new exercise must have the same first `muscleGroup` and the same `pattern` as the one it replaces. Your logs must show the removed exercise missing the top of its rep range (every set) in each of its last 3 logged sessions. |
+| HIIT sessions | At most 4 HIIT sessions a week after the change. |
 | Reasons | Every change needs a `changeLog` entry. |
 | Approvals | Every `approval` entry needs a matching `approvals` item. |
 | Program | The lifting, core and cardio after the change must pass the program checks. |
 
-The app does **not** check the weekly HIIT-session count (3–4), the stall condition itself (3 sessions without reaching the top of the rep range), or that a swap keeps the same movement pattern (it only compares the listed muscle group). Those rules stay with the agent. Every calorie change still needs your approval before it happens, and every swap can be rejected in the review or undone afterwards.
+The app does **not** check that you have 3 to 4 HIIT sessions (the built-in program has 2; the agent can switch a push or pull Zone 2 day to HIIT with your approval), or that the rest of the week's cardio is sensible. Those rules stay with the agent. Every calorie change still needs your approval before it happens, and every swap can be rejected in the review or undone afterwards.
 
 ## `applied-plans` records
 
@@ -191,7 +204,7 @@ Applying writes one document per plan to the `applied-plans` collection, keyed b
 
 ## Full example
 
-Against the built-in program and the sample meal plan. `scripts/verify-proposal.js` checks this block is identical to `docs/examples/next-week-plan.example.json` and that it validates.
+Against the built-in program and the sample meal plan. `scripts/verify-proposal.js` checks this block is identical to `docs/examples/next-week-plan.example.json` and that it validates. The swap in it only validates against a workout log where Pec Deck / Cable Fly missed 15 reps on every set in its last 3 sessions, so pasting it into the app with no such history shows that error.
 
 <!-- example:start -->
 ```json
@@ -206,7 +219,7 @@ Against the built-in program and the sample meal plan. `scripts/verify-proposal.
     "PUSH A": [
       { "name": "Incline DB Press", "targetLb": 55 },
       { "name": "Cable Lateral Raise" },
-      { "name": "Cable Crossover", "muscleGroup": ["Chest"], "sets": 3, "reps": { "low": 12, "high": 15 }, "rir": { "low": 0, "high": 1 }, "restSec": { "low": 60, "high": 90 }, "progression": "upper", "role": "isolation", "cue": "Low-to-high path, 1 sec squeeze" },
+      { "name": "Cable Crossover", "muscleGroup": ["Chest"], "pattern": "fly", "sets": 3, "reps": { "low": 12, "high": 15 }, "rir": { "low": 0, "high": 1 }, "restSec": { "low": 60, "high": 90 }, "progression": "upper", "role": "isolation", "cue": "Low-to-high path, 1 sec squeeze" },
       { "name": "Machine Shoulder Press" },
       { "name": "Overhead Cable Extension" },
       { "name": "Tricep Pushdown" },

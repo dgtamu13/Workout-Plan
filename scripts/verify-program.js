@@ -122,6 +122,29 @@ check('A pull-forward deload week in the document makes that week a deload week'
   assert.ok(run(`liftRows('PUSH A', '2026-11-03')`).every(r => r[1] === 'Deload'));
   vm.runInContext(`applyProgram(ProgramLib.BUILTIN)`, ctx);
 });
+const withTarget = (session, name, lb) => { const d = clone(ProgramLib.BUILTIN); d.version = 2; d.source = 'agent'; d.sessions[session].exercises.find(e => e.name === name).targetLb = lb; return d; };
+const recFor = (session, name, k) => run(`liftRec(${J(name)}, liftRows(${J(session)}, ${J(k)}).find(r => r[0] === ${J(name)}), ${J(session)}, ${J(k)})`);
+const logSets = (date, name, session, w, reps) => run(`workouts[${J(date + '_lift')}] = { date:${J(date)}, type:'lift', session:${J(session)}, exercises:[{ name:${J(name)}, planned:${J(name)}, skipped:false, sets:${J(reps.map(r => ({ w, r })))} }] }`);
+check('Agent target load (targetLb) replaces the computed weight until a session reaches it', () => {
+  run('workouts = {}'); run('fatigueLog = {}');
+  vm.runInContext(`applyProgram(${J(withTarget('PUSH A', 'Tricep Pushdown', 60))})`, ctx);
+  const k = weekStart(2);
+  let r = recFor('PUSH A', 'Tricep Pushdown', k); assert.ok(r.targets.every(t => t.w === 60) && /Training agent target: 60 lb/.test(r.why) && /Agent target 60 lb/.test(r.status.text), 'no history yet');
+  logSets(weekStart(1), 'Tricep Pushdown', 'PUSH A', 50, [18, 17, 16]);
+  r = recFor('PUSH A', 'Tricep Pushdown', k); assert.ok(r.targets.every(t => t.w === 60), 'last session was at 50');
+  logSets(weekStart(1), 'Tricep Pushdown', 'PUSH A', 60, [16, 15, 15]);
+  r = recFor('PUSH A', 'Tricep Pushdown', k); assert.ok(r.targets.every(t => t.w === 60) && !/Training agent target/.test(r.why), 'reached it: the normal progression takes over (stay at 60)');
+  logSets(weekStart(1), 'Tricep Pushdown', 'PUSH A', 65, [16, 15, 15]);
+  assert.ok(!/Training agent target/.test(recFor('PUSH A', 'Tricep Pushdown', k).why), 'went past it');
+  run('workouts = {}');
+  logSets(weekStart(4), 'Tricep Pushdown', 'PUSH A', 50, [18, 17, 16]);
+  r = recFor('PUSH A', 'Tricep Pushdown', weekStart(5)); assert.ok(r.targets.every(t => t.w === 50) && !/Training agent target/.test(r.why), 'deload week keeps the weights you last used');
+  vm.runInContext(`applyProgram(${J(withTarget('PUSH B', 'Barbell Bench Press', 200))})`, ctx);
+  const wk = weekStart(16);
+  logSets(run(`addDays(${J(wk)}, -7)`), 'Barbell Bench Press', 'PUSH B', 190, [5, 4, 3, 5, 4, 3]);
+  r = recFor('PUSH B', 'Barbell Bench Press', wk); assert.deepStrictEqual(r.targets.map(t => t.w), [180, 190, 200, 180, 190, 200]); assert.ok(/200 lb peak/.test(r.waveTo));
+  run('workouts = {}'); vm.runInContext('applyProgram(ProgramLib.BUILTIN)', ctx);
+});
 check('An invalid document is ignored and the current program stays', () => {
   const before = run('planVer()');
   const ok = run(`applyProgram(${J(mutated(d => { d.sessions['PUSH A'].exercises[0].sets = 0; }))})`);

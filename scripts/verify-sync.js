@@ -55,12 +55,12 @@ function backend() {
       return res(200, {});
     }
     m = /^\/v4\/spreadsheets\/([^/:]+)\/values:batchClear$/.exec(p);
-    if (m) { for (const rg of body.ranges) delete sheets[m[1]].values[rg]; return res(200, {}); }
+    if (m) { for (const rg of body.ranges) delete sheets[m[1]].values[rg.replace(/^'(.*)'$/, '$1')]; return res(200, {}); }
     m = /^\/v4\/spreadsheets\/([^/:]+)\/values:batchUpdate$/.exec(p);
     if (m) {
       const s = sheets[m[1]]; b.lastBody = body;
       for (const d of body.data) {
-        const tab = d.range.split('!')[0], t = s.tabs.find(x => x.title === tab);
+        const tab = d.range.split('!')[0].replace(/^'(.*)'$/, '$1'), t = s.tabs.find(x => x.title === tab);
         if (!t) return err(400, `Unable to parse range: ${d.range}`, 'badRequest');
         if (d.values.length > t.grid.rowCount || Math.max(...d.values.map(r => r.length)) > t.grid.columnCount) return err(400, `Range (${d.range}) exceeds grid limits.`, 'badRequest');
         s.values[tab] = d.values;
@@ -80,17 +80,17 @@ function makeSync(b, store = {}) {
   vm.createContext(ctx); vm.runInContext(fs.readFileSync(docs('sheets-sync.js'), 'utf8'), ctx);
   return { S: ctx.SheetsSync, store, ctx };
 }
-const TABLES = { Workouts: [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', null]], Body: [['Date', 'Weight (lb)'], ['2026-10-20', 171.5]], Meals: [['Date', 'Food']], Fatigue: [['Date', 'Sleep (1-5)'], ['2026-10-20', 4]] };
+const TABLES = { Workouts: [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', null]], Body: [['Date', 'Weight (lb)'], ['2026-10-20', 171.5]], Meals: [['Date', 'Food']], Fatigue: [['Date', 'Sleep (1-5)'], ['2026-10-20', 4]], Program: [['Area', 'Name'], ['Meta', 'version']], 'Meal Plan': [['Area', 'Item'], ['Meta', 'last calorie change']] };
 const settle = () => new Promise(r => setTimeout(r, 30));
 
-check('First connect creates the folder, the Sheet inside it, the plan file and four tabs with the data', async () => {
+check('First connect creates the folder, the Sheet inside it, the plan file and six tabs with the data', async () => {
   const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES });
   assert.strictEqual(S.state(), 'off'); assert.strictEqual(await S.connect(), true); assert.strictEqual(S.state(), 'ok'); assert.ok(S.lastPublished());
   const folder = b.files.find(f => f.mimeType === 'application/vnd.google-apps.folder'), sheet = b.files.find(f => f.mimeType === 'application/vnd.google-apps.spreadsheet'), plan = b.files.find(f => f.name === 'next-week-plan.json');
   assert.strictEqual(folder.name, 'Training Calendar Data'); assert.deepStrictEqual(folder.parents, []); assert.strictEqual(sheet.name, 'Training Calendar'); assert.deepStrictEqual(sheet.parents, [folder.id]); assert.deepStrictEqual(plan.parents, [folder.id]);
-  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue']); assert.ok(t.every(x => x.grid.frozenRowCount === 1), 'header row frozen');
+  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan']); assert.ok(t.every(x => x.grid.frozenRowCount === 1), 'header row frozen');
   const v = b.sheets[sheet.id].values; assert.deepStrictEqual(v.Workouts, [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', '']]); assert.deepStrictEqual(v.Body[1], ['2026-10-20', 171.5]);
-  assert.strictEqual(b.lastBody.valueInputOption, 'RAW', 'text such as =HYPERLINK stays text'); assert.ok(typeof v.Body[1][1] === 'number');
+  assert.strictEqual(b.lastBody.valueInputOption, 'RAW', 'text such as =HYPERLINK stays text'); assert.ok(typeof v.Body[1][1] === 'number'); assert.deepStrictEqual(v['Meal Plan'], [['Area', 'Item'], ['Meta', 'last calorie change']]); assert.deepStrictEqual(v.Program[1], ['Meta', 'version']);
   assert.ok(/"schema": "training-calendar-next-week-plan"/.test(plan.content)); assert.deepStrictEqual(plain(S.links()), { sheet: `https://docs.google.com/spreadsheets/d/${sheet.id}/edit`, folder: `https://drive.google.com/drive/folders/${folder.id}` });
 });
 check('Publishing again reuses everything and replaces the data (no duplicates)', async () => {

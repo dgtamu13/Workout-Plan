@@ -14,14 +14,14 @@
   const KINDS = ['progression', 'stall-swap', 'volume', 'deload-pull-forward', 'cardio-progression', 'calories', 'macros', 'readiness', 'other'];
   const SCHEMA = 'training-calendar-next-week-plan';
   const TOP_KEYS = ['schema', 'version', 'generatedAt', 'weekStart', 'basedOnProgramVersion', 'note', 'deload', 'lifting', 'core', 'cardio', 'meals', 'changeLog', 'approvals'];
-  const EXERCISE_KEYS = ['name', 'muscleGroup', 'sets', 'reps', 'perSide', 'rir', 'restSec', 'progression', 'methods', 'role', 'cue', 'targetLb'];
+  const EXERCISE_KEYS = ['name', 'muscleGroup', 'pattern', 'sets', 'reps', 'perSide', 'rir', 'restSec', 'progression', 'methods', 'role', 'cue', 'targetLb'];
   const NEW_EXERCISE_KEYS = ['name', 'muscleGroup', 'sets', 'reps', 'rir', 'restSec', 'progression'];
   const CORE_KEYS = ['name', 'sets', 'target'];
   const HIIT_KEYS = ['date', 'session', 'type', 'machine', 'rounds', 'workSec', 'restSec', 'targetAvgWatts'];
   const Z2_KEYS = ['date', 'session', 'type', 'machine', 'durationMin', 'hrLow', 'hrHigh'];
   const MACRO = { kcal: ['calories', 'kcal'], p: ['protein', 'g'], f: ['fat', 'g'], c: ['carbs', 'g'] };
   // Hard limits. A file outside them is rejected before it is shown.
-  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, zone2Hr: [136, 148] };
+  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148] };
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
   const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -142,7 +142,7 @@
           else if (out.weekStart && (x.date < out.weekStart || x.date > addDays(out.weekStart, 6))) err(`${p}.date`, `must fall in the week starting ${out.weekStart}`);
           else entry.date = x.date;
           const has = program.cardio.sessions[x.session];
-          if (has.type !== kind) err(`${p}.type`, `${x.session} is a ${has.type} session in the program and cannot change to ${kind}`);
+          if (has.type !== kind && !/^(PUSH|PULL)/.test(x.session)) err(`${p}.type`, `${x.session} is a ${has.type} session and only push and pull sessions can switch between HIIT and Zone 2`);
           if (x.machine !== undefined) { if (str(x.machine, 40)) entry.machine = x.machine.trim(); else err(`${p}.machine`, 'must be text up to 40 characters'); }
           if (x.type === 'hiit') {
             if (!/^(PUSH|PULL)/.test(x.session)) err(`${p}.session`, 'HIIT is for push and pull days only');
@@ -162,6 +162,8 @@
           }
           out.cardio.push(entry);
         });
+        const hiitAfter = SESSIONS.filter(s => { const e = out.cardio.find(x => x.session === s); return e ? e.type === 'hiit' : program.cardio.sessions[s].type === 'HIIT'; }).length;
+        if (hiitAfter > LIMITS.hiitSessions) err('cardio', `${hiitAfter} HIIT sessions a week is over the limit of ${LIMITS.hiitSessions}`);
       }
     }
 
@@ -287,14 +289,21 @@
     const p = clone(program);
     for (const [s, list] of Object.entries(proposal.lifting)) p.sessions[s].exercises = clone(list);
     for (const [c, list] of Object.entries(proposal.core)) p.core.circuits[c].exercises = clone(list);
-    for (const e of proposal.cardio) {
-      const t = p.cardio.sessions[e.session];
-      if (e.machine) t.machine = e.machine;
-      if (e.type === 'hiit') { t.rounds = e.rounds; t.workSec = e.workSec; t.restSec = e.restSec; t.targetAvgWatts = e.targetAvgWatts; }
-      else { t.durationMin = e.durationMin; t.hrLow = e.hrLow; t.hrHigh = e.hrHigh; }
-    }
+    for (const e of proposal.cardio) p.cardio.sessions[e.session] = cardioDoc(p.cardio.sessions[e.session], e);
     return p;
   }
+  // The program's cardio prescription for a session after a cardio entry from the file.
+  function cardioDoc(cur, e) {
+    const out = e.type === 'hiit' ? { type: 'HIIT' } : { type: 'Zone 2' };
+    out.machine = e.machine || cur.machine;
+    if (cur.alternatives) out.alternatives = clone(cur.alternatives);
+    if (e.type === 'hiit') Object.assign(out, { rounds: e.rounds, workSec: e.workSec, restSec: e.restSec, targetAvgWatts: e.targetAvgWatts });
+    else Object.assign(out, { durationMin: e.durationMin, hrLow: e.hrLow, hrHigh: e.hrHigh });
+    return out;
+  }
+  const cardioText = c => (c.type === 'HIIT' || c.type === 'hiit')
+    ? `HIIT · ${c.rounds} rounds · ${c.workSec} sec on / ${c.restSec} sec off${c.targetAvgWatts ? ` · ${c.targetAvgWatts} W` : ''}`
+    : `Zone 2 · ${c.durationMin} min · ${c.hrLow}–${c.hrHigh} bpm`;
 
   function parse(text, ctx) {
     let raw;
@@ -313,6 +322,7 @@
     ['targetLb', 'Target load', e => (e.targetLb ? e.targetLb + ' lb' : '(none)')],
     ['methods', 'Method', e => (e.methods && e.methods.length ? e.methods.join(', ') : '(none)')],
     ['muscleGroup', 'Muscle group', e => [].concat(e.muscleGroup).join(' / ')],
+    ['pattern', 'Movement pattern', e => e.pattern || '(none)'],
     ['role', 'Role', e => e.role || 'compound'],
     ['perSide', 'Per side', e => e.perSide || '(none)'],
     ['cue', 'Cue', e => e.cue || '(none)'],
@@ -350,6 +360,10 @@
 
     for (const e of proposal.cardio) {
       const cur = program.cardio.sessions[e.session], base = `cardio/${e.session}`;
+      if ((cur.type === 'HIIT') !== (e.type === 'hiit')) {
+        add({ ref: `${base}/type`, group: 'cardio', section: `${e.session} · ${e.type === 'hiit' ? 'HIIT' : 'Zone 2'}`, kind: 'change', field: 'type', label: `Switch to ${e.type === 'hiit' ? 'HIIT' : 'Zone 2'}`, from: cardioText(cur), to: cardioText(e), force: true });
+        continue;
+      }
       const fields = e.type === 'hiit'
         ? [['machine', 'Machine', v => v], ['rounds', 'Rounds', v => String(v)], ['workSec', 'Work interval', v => v + ' sec'], ['restSec', 'Rest interval', v => v + ' sec'], ['targetAvgWatts', 'Target avg watts', v => v + ' W']]
         : [['machine', 'Machine', v => v], ['durationMin', 'Duration', v => v + ' min'], ['hrLow', 'HR floor', v => v + ' bpm'], ['hrHigh', 'HR ceiling', v => v + ' bpm']];
@@ -403,7 +417,13 @@
   }
 
   // Stall swaps follow the agent spec: at most one per session per week, one exercise out and one in, and the same muscle group.
-  function checkSwaps(changes, program, proposal) {
+  // Sessions (newest first) in which `name` was logged with working sets, from the workouts map.
+  function loggedSessions(workouts, name, before) {
+    return Object.values(workouts || {}).filter(w => w && w.type === 'lift' && w.date && w.date <= before && Array.isArray(w.exercises))
+      .map(w => ({ date: w.date, ex: w.exercises.find(e => e && e.name === name && !e.skipped && (e.sets || []).some(s => Number(s.r) > 0)) })).filter(x => x.ex)
+      .sort((a, b) => b.date.localeCompare(a.date)).map(x => ({ date: x.date, sets: x.ex.sets.filter(s => Number(s.r) > 0) }));
+  }
+  function checkSwaps(changes, program, proposal, workouts) {
     const errors = [], bySection = {};
     changes.filter(c => c.swap).forEach(c => { (bySection[`${c.group}|${c.section}`] ||= []).push(c); });
     for (const [key, list] of Object.entries(bySection)) {
@@ -413,7 +433,17 @@
       out[0].partner = inn[0].id; inn[0].partner = out[0].id;
       if (group !== 'lifting') continue;
       const cur = program.sessions[section].exercises.find(e => e.name === out[0].name);
+      if (workouts && cur) {
+        const hist = loggedSessions(workouts, cur.name, proposal.generatedAt.slice(0, 10)).slice(0, LIMITS.stallSessions), top = cur.reps.high;
+        const hit = hist.find(h => h.sets.every(x => Number(x.r) >= top));
+        if (hist.length < LIMITS.stallSessions) errors.push(`${where}: ${cur.name} has ${hist.length} logged session${hist.length === 1 ? '' : 's'}, and a stall swap needs ${LIMITS.stallSessions} in a row without reaching the top of the rep range (${top} reps on every set)`);
+        else if (hit) errors.push(`${where}: ${cur.name} reached the top of the rep range (${top} reps on every set) on ${hit.date}, so it has not stalled for ${LIMITS.stallSessions} sessions`);
+      }
       const added = (proposal.lifting[section] || []).find(e => e.name === inn[0].name);
+      if (cur && cur.pattern) {
+        if (!added.pattern) errors.push(`${where}: ${inn[0].name} needs a "pattern" (the movement pattern of the exercise it replaces is "${cur.pattern}")`);
+        else if (added.pattern !== cur.pattern) errors.push(`${where}: ${inn[0].name} is a ${added.pattern} but ${out[0].name}, the exercise it replaces, is a ${cur.pattern}. A swap must keep the same movement pattern.`);
+      }
       const a = cur && [].concat(cur.muscleGroup)[0], b = added && [].concat(added.muscleGroup)[0];
       if (a && b && lower(a) !== lower(b)) errors.push(`${where}: ${inn[0].name} works ${b} but ${out[0].name}, the exercise it replaces, works ${a}. A swap must keep the same muscle group.`);
     }
@@ -425,7 +455,7 @@
     const res = typeof text === 'string' ? parse(text, ctx) : validate(text, ctx);
     if (!res.ok) return { ...res, changes: [] };
     const changes = diff(ctx, res.proposal), { unexplained, idle } = explain(changes, res.proposal);
-    const warnings = res.warnings.slice(), swapErrors = checkSwaps(changes, ctx.program || lib().BUILTIN, res.proposal);
+    const warnings = res.warnings.slice(), swapErrors = checkSwaps(changes, ctx.program || lib().BUILTIN, res.proposal, ctx.workouts);
     if (swapErrors.length) return { ok: false, errors: swapErrors, warnings, proposal: null, changes: [] };
     if (idle.length) warnings.push(`changeLog entries with no matching change: ${idle.join(', ')}`);
     if (unexplained.length) return { ok: false, errors: unexplained.map(c => `changeLog: "${c.label}" (${c.section}) has no reason. Add a changeLog entry whose refs include "${c.ref}".`), warnings, proposal: null, changes: [] };
@@ -477,7 +507,10 @@
       program = clone(current.program);
       for (const [s, rows] of Object.entries(lift)) program.sessions[s].exercises = rows;
       for (const [c, rows] of Object.entries(core)) program.core.circuits[c].exercises = rows;
-      for (const c of cardio) { const sess = c.ref.split('/')[1], e = proposal.cardio.find(x => x.session === sess); program.cardio.sessions[sess][c.field] = e[c.field]; }
+      for (const c of cardio) {
+        const sess = c.ref.split('/')[1], e = proposal.cardio.find(x => x.session === sess);
+        if (c.field === 'type') program.cardio.sessions[sess] = cardioDoc(program.cardio.sessions[sess], e); else program.cardio.sessions[sess][c.field] = e[c.field];
+      }
       if (deload) program.deloadWeeks = [...new Set([...(program.deloadWeeks || []), proposal.deload.weekStart])].sort();
       program.version = current.program.version + 1;
       program.source = 'agent';
@@ -525,6 +558,6 @@
     return !(appliedList || []).some(a => Date.parse(a.generatedAt) >= t);
   };
 
-  root.PlanProposal = { SESSIONS, SCHEMA, LIMITS, validate, parse, diff, explain, review, apply, defaults, isNewer, proposalId };
+  root.PlanProposal = { SESSIONS, SCHEMA, LIMITS, lastCalorieChange, validate, parse, diff, explain, review, apply, defaults, isNewer, proposalId };
   if (typeof module === 'object' && module.exports) module.exports = root.PlanProposal;
 })(typeof window !== 'undefined' ? window : globalThis);
