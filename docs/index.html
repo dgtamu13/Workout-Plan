@@ -11,6 +11,33 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Training">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>
+// If the app's own code fails, say so on screen (a phone has no console) and offer a way out: reload, or reset the app's cached files.
+// Saved workouts are not touched by either.
+(function () {
+  var shown = false;
+  function bar(msg) {
+    if (shown) return; shown = true;
+    function add() {
+      var b = document.createElement('div'), t = document.createElement('div');
+      b.id = 'errBar'; b.setAttribute('role', 'alert');
+      b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7a1020;color:#fff;font:13px/1.45 -apple-system,system-ui,sans-serif;padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px))';
+      t.textContent = 'The app hit an error: ' + msg; t.style.marginBottom = '8px'; b.appendChild(t);
+      [['Reload', function () { location.reload(); }], ['Reset app files', function () {
+        var done = function () { location.reload(); };
+        Promise.all([navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); }) : 0, window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : 0]).then(done, done);
+      }]].forEach(function (x) { var c = document.createElement('button'); c.textContent = x[0]; c.onclick = x[1]; c.style.cssText = 'margin-right:8px;padding:8px 12px;border-radius:8px;border:1px solid #fff;background:transparent;color:#fff;font:inherit'; b.appendChild(c); });
+      document.body.appendChild(b);
+    }
+    if (document.body) add(); else document.addEventListener('DOMContentLoaded', add);
+  }
+  window.addEventListener('error', function (e) {
+    if (!e.message || e.message === 'Script error.' || (e.filename && e.filename.indexOf(location.origin) !== 0)) return; // errors inside other sites' scripts are not ours
+    bar(e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) { var m = e.reason && e.reason.message; if (m && !/^(offline|timeout|popup|Failed to fetch|Load failed)/i.test(m)) bar(m); });
+})();
+</script>
 <style>html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]:not([hidden=until-found i]){display:none!important}img{max-width:100%}</style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;600;700;800&display=swap">
 
@@ -2799,9 +2826,11 @@ function onSyncState() {
   if (st !== 'syncing') afterSnap();
 }
 let bkPasteOpen = false;
+let appBuild = '';
+if (window.caches) caches.keys().then(k => { appBuild = (k.find(n => /^training-calendar-v\d+$/.test(n)) || '').replace('training-calendar-', ''); }).catch(() => {});
 function programStatus() {
   const p = PROGRAM, usingDoc = p.source !== 'built-in';
-  return `<div class="note" style="margin-top:10px">Program: version ${p.version} · ${esc(p.source)}${programError ? ` · <b style="color:var(--bad,#c0392b)">Ignored an invalid config/program (${esc(programError[0])})</b>` : ''}${usingDoc ? ` <button class="mini" data-act="prog-reset">Use built-in program</button>` : ''}</div>`;
+  return `<div class="note" style="margin-top:10px">${appBuild ? `App build ${esc(appBuild)} · ` : ''}Program: version ${p.version} · ${esc(p.source)}${programError ? ` · <b style="color:var(--bad,#c0392b)">Ignored an invalid config/program (${esc(programError[0])})</b>` : ''}${usingDoc ? ` <button class="mini" data-act="prog-reset">Use built-in program</button>` : ''}</div>`;
 }
 function resetProgram() {
   if (!confirm('Replace the current program with the built-in program? Your logged workouts are not changed.')) return;
@@ -3146,7 +3175,19 @@ async function connect() {
   renderCalendar(); render();
   connect();
 })();
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+  // A new version took over while the app was open: offer a reload instead of interrupting a workout.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || document.getElementById('updBar')) return;
+    const b = Object.assign(document.createElement('div'), { id: 'updBar', role: 'status' });
+    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:9000;background:var(--surf);color:var(--fg);border:1px solid var(--accent);border-radius:12px;padding:10px 14px;font-size:.85rem;display:flex;gap:12px;align-items:center;justify-content:space-between';
+    b.innerHTML = '<span>A new version of the app is ready.</span>';
+    const r = Object.assign(document.createElement('button'), { textContent: 'Reload', className: 'primary', onclick: () => location.reload() });
+    b.appendChild(r); document.body.appendChild(b);
+  });
+});
 </script>
 
 </body></html>
