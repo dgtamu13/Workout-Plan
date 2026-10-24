@@ -111,12 +111,17 @@ check('Failures: sign-in refused or silent sign-in blocked -> needs-auth; offlin
   const o = device(d); o.ctx.navigator.onLine = false; o.ctx.fetch = async () => { throw new TypeError('Failed to fetch'); }; o.ctx.nextToken = 'tok-1';
   await o.db.connect(); await wait(); assert.ok(['offline', 'error'].includes(o.db.state()), o.db.state());
 });
-check('A tap retries a blocked silent sign-in (the user gesture lets the popup open)', async () => {
+check('An expired sign-in does not hijack taps: no listener on pointerdown, no quiet retries every tick, and one Reconnect restores sync', async () => {
   const d = drive(), a = device(d); await a.db.connect(); await wait();
-  const b = device(d, a.storage); await wait(30); b.ctx.denyNext = true; b.storage['derek-tc-drive-token'] = J({ t: 'old', exp: 0, hint: 'derek@example.com' });
-  const c = device(d, b.storage); c.ctx.denyNext = true; await wait(60); assert.strictEqual(c.db.state(), 'needs-auth');
-  c.ctx.denyNext = false; c.handlers.pointerdown && c.handlers.pointerdown(); await wait(60);
-  assert.strictEqual(c.db.state(), 'ok', 'recovered after the retry'); assert.deepStrictEqual(c.ctx.lastOpts && c.ctx.lastOpts.prompt, '', 'the retry is interactive');
+  const b = device(d, a.storage); b.ctx.denyNext = true; await wait(80); // reload with an expired token and a refused quiet sign-in
+  b.storage['derek-tc-drive-token'] = J({ t: 'old', exp: 0, hint: 'derek@example.com' });
+  const c = device(d, b.storage); c.ctx.denyNext = true; await wait(80);
+  assert.strictEqual(c.db.state(), 'needs-auth'); assert.strictEqual(c.handlers.pointerdown, undefined, 'nothing listens to taps');
+  const n = c.ctx.tokenRequests;
+  c.handlers.visibilitychange(); await c.api.doc('a/1').set({ x: 1 }); await wait(1800); // a tab switch and an edit stay quiet
+  assert.strictEqual(c.ctx.tokenRequests, n, 'no sign-in attempts while waiting for the user'); assert.strictEqual(c.db.state(), 'needs-auth'); assert.ok(store(c)['a/1'], 'the edit is kept on the device');
+  c.ctx.denyNext = false; await c.db.connect(); await wait(80);
+  assert.strictEqual(c.db.state(), 'ok', 'one Reconnect works'); assert.strictEqual(c.ctx.lastOpts.prompt, '', 'interactive'); assert.strictEqual(JSON.parse(d.file).docs['a/1'].d.x, 1, 'the offline edit syncs');
 });
 check('Disconnect forgets the link and token but keeps the data on the device', async () => {
   const d = drive(), a = device(d); await a.api.doc('a/1').set({ x: 1 }); await a.db.connect(); await wait(); a.db.disconnect();

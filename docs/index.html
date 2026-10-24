@@ -232,6 +232,8 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .phase.collapsed > span { display:none; }
 .fold-c { color:var(--fg3); font-style:normal; transition:transform .15s; flex:none; }
 .collapsed > .fold-h .fold-c, .phase.collapsed > b .fold-c { transform:rotate(-90deg); }
+.sync-banner, #syncBanner { display:flex; gap:12px; align-items:center; justify-content:space-between; max-width:980px; margin:8px auto; padding:10px 14px; border:1px solid var(--accent); border-radius:10px; background:var(--surf); color:var(--fg); font-size:.82rem; }
+#syncBanner[hidden] { display:none; }
 .fold-bar { display:flex; gap:8px; justify-content:flex-end; margin:0 0 8px; }
 .fold-h { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surf); color:var(--fg); border:1px solid var(--border); border-radius:12px; padding:10px 14px; margin-bottom:8px; font:inherit; font-size:.88rem; cursor:pointer; }
 .fold-n { font-family:var(--mono); font-size:.68rem; color:var(--fg3); }
@@ -2868,7 +2870,24 @@ function onSyncState() {
   syncMode = st === 'ok' ? 'cloud' : 'local';
   const b = document.getElementById('syncBtn');
   if (b) { b.dataset.state = st; b.textContent = '☁ ' + SYNC_LABEL[st]; }
-  if (st !== 'syncing') afterSnap();
+  syncBanner();
+  // Only the History tab shows the sync status, so only it is redrawn. Redrawing the page whenever a sign-in attempt changes the
+  // state would replace the buttons under a finger mid-tap and the tap would be lost.
+  if (st !== 'syncing' && tab === 'history') afterSnap();
+}
+// When the Google sign-in has expired (iOS does not allow the quiet renewal), one banner above the page offers a one-tap reconnect.
+// It lives outside #main so it never redraws with the page, and it signs in only when tapped (a tap is what lets Google's window open).
+function syncBanner() {
+  let bar = document.getElementById('syncBanner');
+  const need = !!window.DriveDB && DriveDB.linked() && DriveDB.state() === 'needs-auth';
+  if (!need) { if (bar) bar.hidden = true; return; }
+  if (!bar) {
+    bar = Object.assign(document.createElement('div'), { id: 'syncBanner', role: 'status' });
+    bar.innerHTML = '<span>Google sign-in expired. Your data is safe on this device and will sync after you reconnect.</span><button class="primary" type="button">Reconnect</button>';
+    bar.querySelector('button').addEventListener('click', () => DriveDB.connect());
+    const m = document.querySelector('.main'); m.parentNode.insertBefore(bar, m);
+  }
+  bar.hidden = false;
 }
 let bkPasteOpen = false;
 let appBuild = '';
@@ -2999,7 +3018,7 @@ let proposalCheckedAt = 0;
 let _lastSheetsState = null;
 if (window.SheetsSync) {
   SheetsSync.configure({ getTables: sheetTables });
-  SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; afterSnap(); });
+  SheetsSync.onState(st => { if (st === _lastSheetsState) return; _lastSheetsState = st; if (tab === 'history') afterSnap(); }); // only the History tab shows this state; redrawing elsewhere would eat taps
 }
 const appliedList = () => Object.values(appliedPlans);
 // countable: the same sessions the app's own progression counts (not deload weeks, not low-readiness days), so "stalled" means the same in both.

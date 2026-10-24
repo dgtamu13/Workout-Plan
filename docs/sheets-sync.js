@@ -26,7 +26,7 @@
   let state = ids.linked ? 'ready' : 'off'; // off | ready | connecting | publishing | ok | needs-auth | offline | api-disabled | error
   let lastPublished = ids.lastPublished || null, lastError = null;
   let token = null, tokenExp = 0, tokenClient = null, hint = null;
-  let busy = false, again = false, timer = null, getTables = () => ({});
+  let busy = false, again = false, timer = null, getTables = () => ({}), authFailedAt = 0;
   const stateCbs = [];
   const save = () => ls.set(STORE_KEY, JSON.stringify(ids));
   function setState(s, err) { state = s; lastError = err || null; stateCbs.forEach(cb => { try { cb(s); } catch {} }); }
@@ -164,13 +164,14 @@
 
   async function publish(interactive) {
     if (!ids.linked && !interactive) return false;
+    if (!interactive && state === 'needs-auth' && Date.now() - authFailedAt < 15 * 60 * 1000) return false; // reconnect is one tap on the app's banner, not a retry on every submit
     if (busy) { again = true; return false; }
     busy = true; setState('publishing');
     try {
       await withFreshIds(() => publishOnce(interactive));
       ids.linked = true; lastPublished = Date.now(); ids.lastPublished = lastPublished; save();
       setState('ok'); return true;
-    } catch (e) { const [s, m] = classify(e); setState(s, m); return false; }
+    } catch (e) { const [s, m] = classify(e); if (s === 'needs-auth') authFailedAt = Date.now(); setState(s, m); return false; }
     finally { busy = false; if (again) { again = false; schedule(); } }
   }
   function schedule() { if (!ids.linked) return; clearTimeout(timer); timer = setTimeout(() => publish(false), 1500); }
@@ -221,8 +222,4 @@
     onState: cb => { stateCbs.push(cb); },
     connect, publish, schedule, readPlan: check, disconnect,
   };
-  if (typeof document !== 'undefined') {
-    // If silent sign-in is blocked, the next tap reconnects (a user gesture lets Google's popup open).
-    document.addEventListener('pointerdown', () => { if (ids.linked && state === 'needs-auth' && !busy) publish(true); }, true);
-  }
 })(typeof window !== 'undefined' ? window : globalThis);
