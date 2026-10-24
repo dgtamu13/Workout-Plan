@@ -1,5 +1,5 @@
 // Bump CACHE when shipping changes so clients drop old assets.
-const CACHE = 'training-calendar-v22';
+const CACHE = 'training-calendar-v23';
 const ASSETS = [
   './',
   'index.html',
@@ -29,28 +29,37 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Only this release's cache is ever read (caches.match alone would also search leftovers from older releases).
+const fromCache = req => caches.open(CACHE).then(c => c.match(req));
+const cacheCopy = (req, res) => { if (res && (res.ok || res.type === 'opaque')) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; };
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Pages: network first so updates show up, cached copy when offline.
+  // Pages: network first (revalidated, never the browser's 10-minute HTTP cache) so updates show up; cached copy when offline.
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put('index.html', copy)); return res; })
-        .catch(() => caches.match('index.html'))
+        .catch(() => fromCache('index.html'))
     );
     return;
   }
 
-  // Same-origin assets and Google Fonts: cache first, fill on miss.
-  if (url.origin === self.location.origin || FONT_HOSTS.includes(url.hostname)) {
-    e.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
-        return res;
-      }))
-    );
+  // The app's own scripts and data: network first too, so a page never runs against scripts from an older release.
+  // Falls back to the cached copy when offline. Icons and the bundled chart library never change under the same name: cache first.
+  if (url.origin === self.location.origin) {
+    const stable = /\/(vendor|icons)\//.test(url.pathname);
+    e.respondWith(stable
+      ? fromCache(req).then(hit => hit || fetch(req).then(res => cacheCopy(req, res)))
+      : fetch(req, { cache: 'no-cache' }).then(res => cacheCopy(req, res)).catch(() => fromCache(req)));
+    return;
+  }
+
+  // Google Fonts: cache first, fill on miss.
+  if (FONT_HOSTS.includes(url.hostname)) {
+    e.respondWith(fromCache(req).then(hit => hit || fetch(req).then(res => cacheCopy(req, res))));
   }
 });

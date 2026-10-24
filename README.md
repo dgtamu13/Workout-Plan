@@ -80,3 +80,5 @@ The app warns when HIIT rounds exceed 16 or a Zone 2 session passes 60 minutes.
 ## Updating the service worker
 
 Bump `CACHE` in `docs/sw.js` whenever you change cached files so installed copies refresh.
+
+Pages and the app's own scripts load network-first (revalidated each time), so a phone never runs new HTML against scripts from an older release; the cached copies are only the offline fallback. Icons and the bundled chart library are cache-first. When a new version takes over while the app is open, a bar offers **Reload**. If the app's own code throws, a red bar at the bottom shows the error with **Reload** and **Reset app files** (clears the cached files and service worker, keeps your data); **History → Data & sync** shows which build is running.
