@@ -587,7 +587,7 @@ body.resting .main { padding-bottom:120px; }
 <script src="sheets-sync.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
-const START = new Date(2026, 9, 20); // Day 1 (PUSH A): Tue Oct 20, 2026
+const START = new Date(2026, 9, 24); // Day 1 (PUSH A): Sat Oct 24, 2026
 const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
@@ -2888,6 +2888,7 @@ const PROGRAM_COLS = ['Area', 'Session', 'Order', 'Name', 'Muscle Group', 'Patte
 function programRows() {
   const rows = [PROGRAM_COLS], add = o => rows.push(PROGRAM_COLS.map(c => o[c] ?? ''));
   const p = PROGRAM, rest = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
+  add({ Area:'Meta', Name:'start date (Day 1, PUSH A)', 'Cue / Target':keyOf(START) }); add({ Area:'Meta', Name:'weeks', 'Cue / Target':`${PROGRAM_WEEKS} program weeks of 7 days from Day 1; the last day is ${programEnd()}` });
   add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
   add({ Area:'Meta', Name:'deloadWeeks (pull-forward)', 'Cue / Target':(p.deloadWeeks || []).join(', ') });
   add({ Area:'Meta', Name:'scheduled deload weeks', 'Cue / Target':[...deloadWeeks()].sort((a, b) => a - b).join(', ') });

@@ -10,7 +10,10 @@ const ProgramLib = require('../docs/program.js');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'docs', 'index.html'), 'utf8');
 const script = html.match(/<script>\n(\/\/ ═══ Program[\s\S]*?)<\/script>/)[1];
-const code = script.slice(0, script.indexOf('// ═══ Muscle groups'));
+const realCode = script.slice(0, script.indexOf('// ═══ Muscle groups'));
+// These tests use a fixed calendar (Day 1 = Tue 2026-10-20) so they do not move when the program's real start date does.
+// The real START is checked separately (see "The program starts on its real Day 1").
+const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);');
 const golden = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'program-golden.json'), 'utf8'));
 const muscles = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'muscle-groups-golden.json'), 'utf8'));
 const clone = o => JSON.parse(JSON.stringify(o));

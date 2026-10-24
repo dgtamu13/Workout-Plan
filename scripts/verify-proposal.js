@@ -84,7 +84,7 @@ check('HIIT rounds of exactly 16 and Zone 2 of exactly 60 minutes are allowed', 
 rejects('Zone 2 longer than 60 minutes', f => { f.cardio[1].durationMin = 61; }, /61 minutes is over the limit of 60/);
 rejects('a Zone 2 heart rate outside 136–148', f => { f.cardio[1].hrHigh = 155; }, /136–148/);
 rejects('HIIT on a legs day', f => { Object.assign(f.cardio[0], { session: 'LEGS B' }); }, /only push and pull sessions can switch|push and pull days only/);
-rejects('a cardio date outside the week', f => { f.cardio[0].date = '2026-11-20'; }, /must fall in the week starting 2026-11-03/);
+rejects('a cardio date outside the week', f => { f.cardio[0].date = '2026-11-20'; }, /must fall in the week starting 2026-11-07/);
 rejects('a protein change', f => { f.meals.targets.training.p = 205; }, /protein must not change \(it is 200 g/);
 rejects('a calorie change of 151', f => { f.meals.targets.training.kcal = 2651; }, /limited to 150 kcal.*151/);
 check('A calorie change of exactly 150 (up or down) is allowed, on either target', () => {
@@ -146,7 +146,7 @@ check('Stall check ignores skipped exercises and sessions after the plan was gen
   assert.ok(!review(EXAMPLE, { ...ctx(), workouts: w }).ok, 'only two counted sessions');
   assert.ok(!review(EXAMPLE, { ...ctx(), workouts: logs(['2026-11-10', '2026-11-12', '2026-11-14'], [12, 13, 13]) }).ok, 'future logs do not count');
 });
-const switchTo = (f, session, e) => { f.cardio.push(Object.assign({ date: '2026-11-06', session }, e)); f.changeLog.push({ id: 'c9', area: 'cardio', tag: 'auto', kind: 'cardio-progression', refs: [`cardio/${session}`], reason: 'Add a third HIIT day.' }); };
+const switchTo = (f, session, e) => { f.cardio.push(Object.assign({ date: '2026-11-10', session }, e)); f.changeLog.push({ id: 'c9', area: 'cardio', tag: 'auto', kind: 'cardio-progression', refs: [`cardio/${session}`], reason: 'Add a third HIIT day.' }); };
 check('A push or pull Zone 2 session can switch to HIIT (always needs approval); other sessions cannot', () => {
   const f = mut(x => switchTo(x, 'PUSH B', { type: 'hiit', machine: 'Rower', rounds: 8, workSec: 30, restSec: 30, targetAvgWatts: 190 }));
   const r = review(f); assert.ok(r.ok, r.errors.join());

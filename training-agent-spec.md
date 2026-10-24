@@ -139,7 +139,7 @@ These stay with the agent:
 
 ## 8. Weekly run
 
-1. Read the Sheet tabs. Note the last calorie change and lockout end.
+1. Read the Sheet tabs. Note the last calorie change and lockout end, and the program's Day 1 date (`Program` tab, `Meta` row "start date (Day 1, PUSH A)"). Program weeks are 7 days counted from Day 1, not calendar weeks: the plan's `weekStart` is the next Day 1 + 7n date after the run.
 2. Check deload triggers (readiness and missed rep targets). If both fire, write `deload` and its `changeLog` entry.
 3. For each lifting exercise: double progression -> `targetLb`; 3-session stall -> a swap.
 4. Cardio: HIIT and Zone 2 progression within the ceilings.

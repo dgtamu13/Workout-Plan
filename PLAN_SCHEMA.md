@@ -37,7 +37,7 @@ The "Training Calendar" Sheet in the same folder is updated after every submit. 
 | `schema` | `"training-calendar-next-week-plan"` | Required. |
 | `version` | `1` | Required. |
 | `generatedAt` | ISO date-time | Required. Used to tell whether this plan is newer than the last one applied. Write a new value every time the agent produces a new plan. |
-| `weekStart` | `YYYY-MM-DD` | Required. First day of the week the plan is for. Cardio dates must fall within the 7 days from here. |
+| `weekStart` | `YYYY-MM-DD` | Required. First day of the program week this plan is for: the program's Day 1 date plus a multiple of 7 (the `Program` tab's `Meta` row "start date (Day 1)" gives Day 1). Cardio dates must fall within the 7 days from here. |
 | `basedOnProgramVersion` | whole number (optional) | The `config/program` version the agent read. If it differs from the app's current version, the review shows a warning (the old values it shows may not be the ones the agent saw). |
 | `note` | text, up to 2000 (optional) | Summary shown at the top of the review. |
 | `deload` | object (optional) | A pull-forward deload. See below. |
@@ -194,7 +194,7 @@ Applying writes one document per plan to the `applied-plans` collection, keyed b
 {
   "id": "p20261102T200000Z",
   "generatedAt": "2026-11-02T20:00:00Z",
-  "weekStart": "2026-11-03",
+  "weekStart": "2026-11-07",
   "appliedAt": "2026-11-03T12:00:00.000Z",
   "note": "Week 3. ...",
   "programVersion": 2,
@@ -219,7 +219,7 @@ Against the built-in program and the sample meal plan. `scripts/verify-proposal.
   "schema": "training-calendar-next-week-plan",
   "version": 1,
   "generatedAt": "2026-11-02T20:00:00Z",
-  "weekStart": "2026-11-03",
+  "weekStart": "2026-11-07",
   "basedOnProgramVersion": 1,
   "note": "Week 3. Loads up where the top of the range was hit, one stalled movement swapped automatically, a little more cardio, and +100 kcal on training days because the 7-day trend is under 0.1 lb/week.",
   "lifting": {
@@ -251,8 +251,8 @@ Against the built-in program and the sample meal plan. `scripts/verify-proposal.
     ]
   },
   "cardio": [
-    { "date": "2026-11-03", "session": "PUSH A", "type": "hiit", "machine": "Rower", "rounds": 12, "workSec": 30, "restSec": 30, "targetAvgWatts": 210 },
-    { "date": "2026-11-05", "session": "LEGS A", "type": "zone2", "durationMin": 35, "hrLow": 136, "hrHigh": 148 }
+    { "date": "2026-11-07", "session": "PUSH A", "type": "hiit", "machine": "Rower", "rounds": 12, "workSec": 30, "restSec": 30, "targetAvgWatts": 210 },
+    { "date": "2026-11-09", "session": "LEGS A", "type": "zone2", "durationMin": 35, "hrLow": 136, "hrHigh": 148 }
   ],
   "meals": {
     "targets": { "training": { "kcal": 2600, "p": 200, "f": 65, "c": 304 } },
@@ -281,12 +281,12 @@ Against the built-in program and the sample meal plan. `scripts/verify-proposal.
     }
   },
   "changeLog": [
-    { "id": "c1", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/PUSH A/Incline DB Press/targetLb"], "reason": "Hit 15 reps on all 4 sets last session. Double progression adds 5 lb (upper body).", "evidence": "2026-10-27: 50 lb × 15/15/15/15 at RIR 1" },
-    { "id": "c2", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/LEGS A/Leg Press/targetLb"], "reason": "Hit the top of 12–15 on all 4 sets. Double progression adds 10 lb (lower body).", "evidence": "2026-10-29: 350 lb × 15/15/15/15" },
+    { "id": "c1", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/PUSH A/Incline DB Press/targetLb"], "reason": "Hit 15 reps on all 4 sets last session. Double progression adds 5 lb (upper body).", "evidence": "2026-10-31: 50 lb × 15/15/15/15 at RIR 1" },
+    { "id": "c2", "area": "lifting", "tag": "auto", "kind": "progression", "refs": ["lifting/LEGS A/Leg Press/targetLb"], "reason": "Hit the top of 12–15 on all 4 sets. Double progression adds 10 lb (lower body).", "evidence": "2026-11-02: 350 lb × 15/15/15/15" },
     { "id": "c3", "area": "lifting", "tag": "auto", "kind": "stall-swap", "refs": ["lifting/PUSH A/Pec Deck / Cable Fly", "lifting/PUSH A/Cable Crossover", "lifting/PUSH A/order"], "reason": "Pec Deck / Cable Fly missed the top of the rep range in 3 sessions in a row. Swapped for a movement with the same muscle group and pattern.", "evidence": "10–12 reps on 10/12, 10/13, 11/13 against a top of 15" },
     { "id": "c4", "area": "core", "tag": "auto", "kind": "progression", "refs": ["core/A/Cable Crunch/target"], "reason": "Every set reached the 15-rep target for two weeks, so the target moves up to 18." },
-    { "id": "c5", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/PUSH A"], "reason": "Target 200 W was hit at 10 rounds with max HR and 60 s recovery in their normal range. Adding 2 rounds and raising the watts target.", "evidence": "2026-10-27: 204 W avg, max HR 171, HR recovery 28" },
-    { "id": "c6", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/LEGS A"], "reason": "Zone 2 progression: +5 minutes, HR stayed inside 136–148.", "evidence": "2026-10-29: 30 min at 141 bpm avg" },
+    { "id": "c5", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/PUSH A"], "reason": "Target 200 W was hit at 10 rounds with max HR and 60 s recovery in their normal range. Adding 2 rounds and raising the watts target.", "evidence": "2026-10-31: 204 W avg, max HR 171, HR recovery 28" },
+    { "id": "c6", "area": "cardio", "tag": "auto", "kind": "cardio-progression", "refs": ["cardio/LEGS A"], "reason": "Zone 2 progression: +5 minutes, HR stayed inside 136–148.", "evidence": "2026-11-02: 30 min at 141 bpm avg" },
     { "id": "c7", "area": "meals", "tag": "approval", "kind": "calories", "refs": ["meals"], "reason": "7-day average weight is up 0.06 lb/week, under the 0.1 lb/week floor for two weeks, and there are 7 extra cardio minutes. Training-day calories +100 (carbs only), protein unchanged.", "evidence": "7-day average 174.1 → 174.2 lb" }
   ],
   "approvals": [

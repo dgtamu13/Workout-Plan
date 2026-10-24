@@ -34,7 +34,7 @@ Open the site on your phone, then **Share → Add to Home Screen** (iOS Safari) 
 ## Program
 
 A 28-week plan that repeats a 7-day cycle counted from Day 1 (not tied to weekdays): PUSH A, PULL A, LEGS A (hypertrophy), PUSH B, PULL B, LEGS B (strength), then REST.
-Everything derives from the single `START` constant in `docs/index.html`.
+Everything derives from the single `START` constant in `docs/index.html`. Day 1 (PUSH A) is Sat 2026-10-24, so program weeks run Saturday to Friday and the Friday of each week is a rest day.
 
 | Phase | Weeks |
 | --- | --- |
