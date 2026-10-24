@@ -26,7 +26,8 @@
   let hint = null;
   let state = 'off'; // off | syncing | ok | needs-auth | offline | error
 
-  let tokenClient = null, synced = false, busy = false, again = false, pushTimer = null;
+  let tokenClient = null, synced = false, busy = false, again = false, pushTimer = null, authFailedAt = 0;
+  const AUTH_RETRY_MS = 15 * 60 * 1000; // after a failed silent sign-in, wait this long before trying quietly again
   const stateCbs = [], listeners = [];
 
   // Reuse a still-valid access token across page loads (tokens last about an hour).
@@ -162,6 +163,8 @@
 
   async function sync(interactive) {
     if (!linked() && !interactive) return;
+    // A silent sign-in that was refused (iOS blocks it) is not retried on every timer tick or tab switch; the user reconnects with one tap on the banner.
+    if (!interactive && state === 'needs-auth' && Date.now() - authFailedAt < AUTH_RETRY_MS) return;
     if (busy) { again = true; return; }
     busy = true; setState('syncing');
     try {
@@ -173,6 +176,7 @@
       setState('ok');
       if (first || m.local) fire();
     } catch (e) {
+      if (e.auth) authFailedAt = Date.now();
       setState(e.auth ? 'needs-auth' : (!navigator.onLine || e.offline) ? 'offline' : 'error');
     } finally {
       busy = false;
@@ -210,11 +214,8 @@
   if (linked()) {
     setState('syncing');
     loadGIS().catch(() => {}).then(() => sync(false));
-    // If silent sign-in is blocked, retry on the next tap: a user gesture lets Google's popup open
-    // (it closes by itself when access was already granted).
-    document.addEventListener('pointerdown', () => { if (state === 'needs-auth' && !busy) sync(true); }, true);
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(false); });
   window.addEventListener('online', () => sync(false));
-  setInterval(() => { if (!document.hidden) sync(false); }, 120000);
+  setInterval(() => { if (!document.hidden && state !== 'needs-auth') sync(false); }, 120000);
 })();
