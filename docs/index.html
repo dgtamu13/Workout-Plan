@@ -228,6 +228,17 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .phase { display:flex; flex-direction:column; gap:3px; border:1px solid var(--border); border-left:3px solid var(--green); background:var(--surf); padding:10px 14px; margin-bottom:12px; font-size:.82rem; line-height:1.45; }
 .phase b { font-family:var(--disp); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; }
 .phase span { color:var(--fg2); max-width:70ch; }
+.phase > b[data-act] { display:flex; justify-content:space-between; align-items:center; gap:10px; cursor:pointer; }
+.phase.collapsed > span { display:none; }
+.fold-c { color:var(--fg3); font-style:normal; transition:transform .15s; flex:none; }
+.collapsed > .fold-h .fold-c, .phase.collapsed > b .fold-c { transform:rotate(-90deg); }
+.fold-bar { display:flex; gap:8px; justify-content:flex-end; margin:0 0 8px; }
+.fold-h { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surf); color:var(--fg); border:1px solid var(--border); border-radius:12px; padding:10px 14px; margin-bottom:8px; font:inherit; font-size:.88rem; cursor:pointer; }
+.fold-n { font-family:var(--mono); font-size:.68rem; color:var(--fg3); }
+.fold-t { font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fold-s { margin-left:auto; font-size:.74rem; color:var(--fg2); font-family:var(--mono); white-space:nowrap; }
+.fold.collapsed > .fold-b { display:none; }
+.fold.collapsed > .fold-h { margin-bottom:10px; }
 .rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
 .rec-head .rec-title { margin-bottom:0; }
 .dp { font-family:var(--mono); font-size:.66rem; font-weight:600; letter-spacing:.04em; padding:2px 8px; border-radius:3px; border:1px solid currentColor; white-space:nowrap; }
@@ -809,7 +820,8 @@ function phaseBanner(k, type = 'lift') {
   const title = `Week ${i.week} of ${PROGRAM_WEEKS} · Phase ${ph.n} ${ph.name}${i.deload ? ' · Deload week' : ''}`;
   const body = type === 'core' ? CORE_COPY : type === 'cardio' ? CARDIO_COPY[ph.n] : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.`;
   const text = i.deload ? DELOAD_COPY[type] || DELOAD_COPY.lift : `${body}${upcoming && upcoming !== i.week ? ` Next deload: week ${upcoming} (${dlDates(upcoming)}).` : ''}`;
-  return `<div class="phase${i.deload ? ' deload' : ''}"><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
+  const key = `phase:${type}`, closed = isFolded(key);
+  return `<div class="phase${i.deload ? ' deload' : ''}${closed ? ' collapsed' : ''}" data-fold="${key}"><b data-act="fold" role="button" tabindex="0" aria-expanded="${!closed}">${esc(title)}<i class="fold-c" aria-hidden="true">▾</i></b><span>${esc(text)}</span></div>`;
 }
 const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
 function plannedSession(date) {
@@ -852,6 +864,11 @@ let appliedPlans = {}; // applied-plans collection: id -> record of what was acc
 const LS = { w:'derek-tc-workouts-v3', d:'derek-tc-drafts-v3', s:'derek-tc-sess-v2', swaps:'derek-tc-swaps', fatigue:'derek-tc-fatigue', applied:'derek-tc-applied-plans-v1' };
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+// Closed sections of a workout day (phase banner, overload plan, each exercise) are remembered on this device.
+const FOLDS_KEY = 'derek-tc-folds-v1';
+const foldClosed = new Set(lsGet(FOLDS_KEY, []));
+const saveFolds = () => lsSet(FOLDS_KEY, [...foldClosed]);
+const isFolded = key => foldClosed.has(key);
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
 swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {}); appliedPlans = lsGet(LS.applied, {});
@@ -1547,6 +1564,7 @@ function dayHead(k, session) {
   </div>`;
 }
 
+const foldBar = () => `<div class="fold-bar"><button class="mini" data-act="fold-all" data-v="0">Collapse all</button><button class="mini" data-act="fold-all" data-v="1">Expand all</button></div>`;
 function renderDay(type) {
   const k = keyOf(selected), session = sessionFor(k);
   if (!session) {
@@ -1570,10 +1588,16 @@ function renderDay(type) {
   if (type === 'lift') {
     body = phaseBanner(k, 'lift')
       + prBanner(d) + overloadPlan(d, session, k)
-      + d.exercises.map((ex, i) => liftRow(ex, i, session, k)).join('');
+      + foldBar() + d.exercises.map((ex, i) => {
+        const p = liftRows(session, k).find(r => r[0] === ex.planned) || [ex.planned, 'RIR 2', '3', '8–12'];
+        return foldEx(`x:lift:${ex.planned}`, String(i + 1).padStart(2, '0'), ex.name, ex.skipped ? 'skipped' : `${p[2]} × ${p[3]} · ${setsDone(ex)}`, liftRow(ex, i, session, k));
+      }).join('');
   }
-  if (type === 'core') body = phaseBanner(k, 'core') + d.exercises.map((ex, i) => coreRow(ex, i, session, k)).join('');
-  if (type === 'cardio') body = phaseBanner(k, 'cardio') + cardioRow(d.exercises[0], session, k);
+  if (type === 'core') body = phaseBanner(k, 'core') + foldBar() + d.exercises.map((ex, i) => {
+    const p = coreRows(session, k).find(r => r[0] === ex.planned) || [ex.planned, '3', '10 reps'];
+    return foldEx(`x:core:${ex.planned}`, String(i + 1).padStart(2, '0'), ex.name, ex.skipped ? 'skipped' : `${p[1]} × ${p[2]} · ${setsDone(ex)}`, coreRow(ex, i, session, k));
+  }).join('');
+  if (type === 'cardio') { const ex = d.exercises[0], c = cardioPlan(session, k); body = phaseBanner(k, 'cardio') + foldEx('x:cardio', '', `${c.type} · ${ex.machine || c.recommended}`, ex.skipped ? 'skipped' : c.type === 'HIIT' ? `${c.rounds} rounds${num(ex.rounds) ? ` · logged ${ex.rounds}` : ''}` : `${c.duration} min${num(ex.duration) ? ` · logged ${ex.duration}` : ''}`, cardioRow(ex, session, k)); }
   return dayHead(k, session) + checkinBanner +
     `<div class="colheads"><div>Plan · target today</div><div>What you did</div></div>` +
     body + submitBar(type, k, d);
@@ -1649,7 +1673,13 @@ function liftRow(ex, i, session, k) {
   </div>`;
 }
 
-let ovlOpen = true;
+let ovlOpen = !isFolded('ovl');
+// One exercise (or the cardio block) with a header that stays visible when it is collapsed: name, plan and how much is logged.
+function foldEx(key, num, name, summary, body) {
+  const closed = isFolded(key);
+  return `<div class="fold${closed ? ' collapsed' : ''}" data-fold="${esc(key)}"><button class="fold-h" data-act="fold" aria-expanded="${!closed}"><span class="fold-n">${esc(num)}</span><span class="fold-t">${esc(name)}</span><span class="fold-s">${esc(summary)}</span><span class="fold-c" aria-hidden="true">▾</span></button><div class="fold-b">${body}</div></div>`;
+}
+const setsDone = ex => `${ex.sets.filter(s => num(s.r) > 0 || num(s.v) > 0).length}/${ex.sets.length} sets`;
 function prBanner(d) {
   const prs = sessionPRs({ ...d, type:'lift' });
   if (!prs.length) return '';
@@ -2667,7 +2697,22 @@ function drawCharts() {
 }
 
 // ── Events for the new tabs ──
-main.addEventListener('toggle', e => { const d = e.target; if (d.tagName === 'DETAILS' && d.dataset.key === 'ovl') { ovlOpen = d.open; return; } if (d.tagName === 'DETAILS' && d.dataset.key) { if (d.open) openDetails.add(d.dataset.key); else openDetails.delete(d.dataset.key); } }, true);
+// Collapse or expand a section (no re-render, so typing and scroll position are left alone) and remember it.
+function setFold(box, open) {
+  const key = box.dataset.fold; box.classList.toggle('collapsed', !open);
+  const h = box.querySelector('[data-act="fold"]'); if (h) h.setAttribute('aria-expanded', String(open));
+  if (open) foldClosed.delete(key); else foldClosed.add(key);
+}
+main.addEventListener('click', e => {
+  const b = e.target.closest('[data-act="fold"], [data-act="fold-all"]'); if (!b) return;
+  if (b.dataset.act === 'fold') { const box = b.closest('[data-fold]'); if (box) { setFold(box, box.classList.contains('collapsed')); saveFolds(); } return; }
+  const open = b.dataset.v === '1';
+  main.querySelectorAll('.fold[data-fold]').forEach(box => setFold(box, open));
+  const ovl = main.querySelector('details[data-key="ovl"]'); if (ovl) { ovl.open = open; ovlOpen = open; if (open) foldClosed.delete('ovl'); else foldClosed.add('ovl'); }
+  saveFolds();
+});
+main.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('b[data-act="fold"]')) { e.preventDefault(); e.target.click(); } });
+main.addEventListener('toggle', e => { const d = e.target; if (d.tagName === 'DETAILS' && d.dataset.key === 'ovl') { ovlOpen = d.open; if (d.open) foldClosed.delete('ovl'); else foldClosed.add('ovl'); saveFolds(); return; } if (d.tagName === 'DETAILS' && d.dataset.key) { if (d.open) openDetails.add(d.dataset.key); else openDetails.delete(d.dataset.key); } }, true);
 main.addEventListener('input', e => {
   const t = e.target, act = t.dataset.act; if (!act) return;
   const k = keyOf(selected);

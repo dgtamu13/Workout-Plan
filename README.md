@@ -58,6 +58,10 @@ The exercises, core circuits and cardio prescriptions are data, not code. The ap
 
 The training agent writes the plan JSON into the Sheet's `Plan` tab (or `next-week-plan.json` in the folder). The app checks for it on open and when you return to the tab; a **New** badge appears on History when its `generatedAt` is newer than the last plan you applied. The review screen shows each change by lifting, core, cardio and meals with the old value, new value and the agent's reason, and you accept or reject each one. Changes tagged `auto` start accepted, `approval` ones start unaccepted. Applying writes `config/program` and `config/plan` and records what was accepted and rejected in `applied-plans`. The file is validated first: unknown fields, HIIT rounds over 16 or more than 4 HIIT sessions, Zone 2 over 60 minutes, protein changes, calorie changes over 150 kcal or inside the 14-day lockout, and stall swaps that are not backed by 3 logged stalled sessions or that change muscle group or movement pattern are all rejected. Stall swaps start accepted; the newest applied plan can be undone. The format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); `scripts/verify-proposal.js` tests it.
 
+## Workout days
+
+On Lifting, Core and Cardio, every section collapses: the phase banner, the overload plan, and each exercise (its header keeps the name, plan and sets logged, for example "Incline DB Press · 4 × 10–15 · 2/4 sets"). Tap a header to fold it, or use **Collapse all / Expand all**. Folds do not re-render the page, so typing and scroll position are left alone, and the closed ones are remembered on the device.
+
 ## Data
 
 Everything is saved on the device first (browser `localStorage`), so the app works offline.
