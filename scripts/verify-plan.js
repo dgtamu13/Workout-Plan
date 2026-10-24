@@ -9,7 +9,10 @@ const assert = require('assert');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'index.html'), 'utf8');
 const script = html.match(/<script>\n(\/\/ ═══ Program[\s\S]*?)<\/script>/)[1];
-const code = script.slice(0, script.indexOf('// ═══ Muscle groups'));
+const realCode = script.slice(0, script.indexOf('// ═══ Muscle groups'));
+// These tests use a fixed calendar (Day 1 = Tue 2026-10-20) so they do not move when the program's real start date does.
+// The real START is checked separately (see "The program starts on its real Day 1").
+const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);');
 
 const ls = {};
 const ctx = {
@@ -81,6 +84,18 @@ check('Every 5th week (5 / 10 / 15 / 20 / 25) is a deload with the exact date ra
   for (let d = 0; d < 196; d++) { const k = addDays('2026-10-20', d), i = info(k); if (i.deload) (seen[i.week] ||= []).push(k); }
   assert.deepStrictEqual(Object.keys(seen).map(Number), [5, 10, 15, 20, 25]);
   for (const [w, [a, b]] of Object.entries(DL)) { assert.strictEqual(seen[w][0], a); assert.strictEqual(seen[w][seen[w].length - 1], b); assert.strictEqual(seen[w].length, 7); }
+});
+
+check('The program starts on its real Day 1: Sat 2026-10-24 is PUSH A, Week 1, Phase 1', () => {
+  assert.ok(/const START = new Date\(2026, 9, 24\)/.test(html), 'START in index.html');
+  const c2 = { console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp, localStorage: ctx.localStorage, location: { hash: '' }, ProgramLib: ctx.ProgramLib };
+  vm.createContext(c2);
+  vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-10-24'), before: programInfo('2026-10-23'), next: programInfo('2026-10-25'), rest: programInfo('2026-10-30'), week2: programInfo('2026-10-31'), end: programEnd(), sched: [...deloadWeeks()] };`, c2);
+  const o = JSON.parse(JSON.stringify(c2.out));
+  assert.deepStrictEqual([o.first.status, o.first.week, o.first.day, o.first.session, o.first.phase.n, o.first.deload], ['active', 1, 1, 'PUSH A', 1, false]);
+  assert.strictEqual(o.before.status, 'not-started'); assert.strictEqual(o.next.session, 'PULL A'); assert.strictEqual(o.rest.session, 'REST');
+  assert.deepStrictEqual([o.week2.session, o.week2.week], ['PUSH A', 2]); assert.strictEqual(o.end, '2027-05-07');
+  assert.deepStrictEqual(o.sched, [5, 10, 15, 20, 25]);
 });
 
 console.log('Plan tables');
