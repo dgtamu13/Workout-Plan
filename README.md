@@ -60,7 +60,9 @@ The training agent writes the plan JSON into the Sheet's `Plan` tab (or `next-we
 
 ## Workout days
 
-On Lifting, Core and Cardio, every section collapses: the phase banner, the overload plan, and each exercise (its header keeps the name, plan and sets logged, for example "Incline DB Press · 4 × 10–15 · 2/4 sets"). Tap a header to fold it, or use **Collapse all / Expand all**. Folds do not re-render the page, so typing and scroll position are left alone, and the closed ones are remembered on the device.
+On Lifting, Core and Cardio, every section collapses: the phase banner, the overload plan, and each exercise (its header keeps the name, plan and sets logged, for example "Incline DB Press · 4 × 10–15 · 2/4 sets"). Tap a header to fold it, or use **Collapse all / Expand all**.
+
+The **Skip today's lifting / core / cardio** switch at the top of the day logs the whole workout as skipped, with an optional reason (rest, sick or injured, travel, no time, no equipment, other). It shows in History with a Skipped badge and in the Sheet and CSV as `Workout Skipped` = Yes plus the reason; it does not count toward the streak, consistency or progression. Turning the switch off removes the skip so you can do the workout after all. Folds do not re-render the page, so typing and scroll position are left alone, and the closed ones are remembered on the device.
 
 ## Data
 
