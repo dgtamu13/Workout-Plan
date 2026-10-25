@@ -16,7 +16,6 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const KG = 2.20462;
   const UNITS = { lb: 'lb', kg: 'kg', plate: 'plate' };
-  const empty = () => ({ machines: {}, byExercise: {} });
 
   function normalize(reg) {
     const r = reg && typeof reg === 'object' ? reg : {};
@@ -77,5 +76,5 @@
   // Reference-lb per displayed unit on machine id (k × unit size), or null when the machine is not calibrated yet.
   function scale(reg, cal, id) { const f = cal.k[id]; return f ? f.k * unitLb(get(reg, id)) : null; }
 
-  return { KG, UNITS, empty, normalize, newId, get, unitLb, toLb, label, step, rounder, resolve, calibrate, scale };
+  return { normalize, newId, get, unitLb, toLb, label, step, rounder, resolve, calibrate, scale };
 });
