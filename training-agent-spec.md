@@ -2,7 +2,7 @@
 
 Operating assumption: **lean bulk**, target gain **+0.25 lb/week**, band **0.1–0.5 lb/week**. All deficit language in older docs is stale.
 
-The agent runs once a week. It reads the Training Calendar Sheet, decides next week's changes, and writes one file, `next-week-plan.json`, plus a readable "what changed and why" note, to the "Training Calendar Data" folder in Drive. The app validates the file and shows every change to the user, who accepts or rejects each one. The exact file format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); this document says what the agent should decide and why.
+The agent runs **every day** (late evening, after the day's workout is logged). It reads the Training Calendar Sheet, looks at what was logged that day (sets, notes, machines, readiness, skipped workouts), decides what to change for the coming days, and writes the plan into the Sheet's `Plan` tab, plus a readable "what changed and why" note in the "Training Calendar Data" folder in Drive. The app validates the file and shows every change to the user, who accepts or rejects each one. The exact file format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); this document says what the agent should decide and why.
 
 ## What changed from v0.1
 
@@ -137,14 +137,18 @@ These stay with the agent:
 - keeping at least 3 HIIT sessions a week, and a sensible week of cardio overall;
 - choosing replacement exercises that make sense beyond muscle group and pattern.
 
-## 8. Weekly run
+## 8. Daily run
 
-1. Read the Sheet tabs. Note the last calorie change and lockout end, and the program's Day 1 date (`Program` tab, `Meta` row "start date (Day 1, PUSH A)"). Program weeks are 7 days counted from Day 1, not calendar weeks: the plan's `weekStart` is the next Day 1 + 7n date after the run.
+0. Find today's entries: `Workouts` rows dated today (sets, the `Notes` column and the `Machine` column), today's `Fatigue` check-in, and today's `Body` weigh-in. If nothing was logged today (a rest day, or nothing submitted yet), make no plan and write no note.
+   - A row with `Workout Skipped` = Yes means the whole workout was skipped on purpose (`Skip Reason` says why). It is not a performed session: it never counts toward a stall or double progression, and a reason such as "Sick or injured" is a readiness signal.
+   - Read the notes. They say what was different: pain, fatigue, time pressure, and especially **which machine or cable stack was used**. The same exercise on a different machine (for example a Precor cable stack for the baseline lateral raises, a Life Fitness one today) is not comparable pound for pound. Until the app records machines for lifts, compare loads only between sessions on the same machine, and say in the changeLog evidence when a session was on a different machine.
+1. Read the Sheet tabs. Note the last calorie change and lockout end, and the program's Day 1 date (`Program` tab, `Meta` row "start date (Day 1, PUSH A)"). Set the plan's `weekStart` to tomorrow: the first day the changes apply. Changes to an exercise take effect the next time its session comes round.
 2. Check deload triggers (readiness and missed rep targets). If both fire, write `deload` and its `changeLog` entry.
 3. For each lifting exercise: double progression -> `targetLb`; 3-session stall -> a swap.
 4. Cardio: HIIT and Zone 2 progression within the ceilings.
 5. Calories: compute the 7-day average trend; if a calorie change is allowed (outside the lockout), propose +/-100-150 kcal with protein unchanged, tagged for approval; otherwise put any flag in `note`.
 6. Write `changeLog` (a reason for every change) and `approvals`, set a new `generatedAt`, and write the JSON into the Sheet's `Plan` tab. Write the readable note beside it.
+7. Most days only today's exercises change. Calorie changes still follow the 14-day lockout, so a daily run usually leaves calories alone.
 
 ## 9. Open items
 

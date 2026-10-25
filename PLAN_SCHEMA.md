@@ -37,7 +37,7 @@ The "Training Calendar" Sheet in the same folder is updated after every submit. 
 | `schema` | `"training-calendar-next-week-plan"` | Required. |
 | `version` | `1` | Required. |
 | `generatedAt` | ISO date-time | Required. Used to tell whether this plan is newer than the last one applied. Write a new value every time the agent produces a new plan. |
-| `weekStart` | `YYYY-MM-DD` | Required. First day of the program week this plan is for: the program's Day 1 date plus a multiple of 7 (the `Program` tab's `Meta` row "start date (Day 1)" gives Day 1). Cardio dates must fall within the 7 days from here. |
+| `weekStart` | `YYYY-MM-DD` | Required. The first day the changes apply. The daily agent run uses tomorrow's date. Cardio dates must fall within the 7 days from here. |
 | `basedOnProgramVersion` | whole number (optional) | The `config/program` version the agent read. If it differs from the app's current version, the review shows a warning (the old values it shows may not be the ones the agent saw). |
 | `note` | text, up to 2000 (optional) | Summary shown at the top of the review. |
 | `deload` | object (optional) | A pull-forward deload. See below. |

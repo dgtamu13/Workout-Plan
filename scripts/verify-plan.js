@@ -390,7 +390,7 @@ check('Old or incomplete records still group (unknown machine or protocol shows 
   assert.deepStrictEqual(s.points.map(p => p.label), ['Unknown machine · ?:?', 'Rower · 30:30']); assert.strictEqual(s.resets.length, 1);
 });
 check('CSV: the four new columns are appended after the existing ones with the exact names', () => {
-  assert.ok(/'PR','Work \(s\)','Rest \(s\)','Avg Watts','HR Recovery 60s'\];/.test(html), 'CSV_HEAD ends with the four new columns');
+  assert.ok(/'PR','Work \(s\)','Rest \(s\)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason'\];/.test(html), 'CSV_HEAD ends with the four new columns');
   assert.ok(/'Muscle Group','e1RM \(lb\)','PR'/.test(html), 'existing columns unchanged');
 });
 

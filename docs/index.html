@@ -234,6 +234,12 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .collapsed > .fold-h .fold-c, .phase.collapsed > b .fold-c { transform:rotate(-90deg); }
 .sync-banner, #syncBanner { display:flex; gap:12px; align-items:center; justify-content:space-between; max-width:980px; margin:8px auto; padding:10px 14px; border:1px solid var(--accent); border-radius:10px; background:var(--surf); color:var(--fg); font-size:.82rem; }
 #syncBanner[hidden] { display:none; }
+.skip-card { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; border:1px solid var(--border); border-radius:10px; background:var(--surf); padding:10px 14px; margin-bottom:12px; font-size:.85rem; }
+.skip-card select { font:inherit; font-size:.8rem; }
+.skip-card.on { border-color:var(--yellow); }
+.skip-card .note { flex-basis:100%; }
+.badge.skip-badge { background:color-mix(in srgb,var(--yellow) 18%,transparent); color:var(--yellow); }
+.dot.skipped { opacity:.45; outline:1px dashed currentColor; }
 .fold-bar { display:flex; gap:8px; justify-content:flex-end; margin:0 0 8px; }
 .fold-h { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surf); color:var(--fg); border:1px solid var(--border); border-radius:12px; padding:10px 14px; margin-bottom:8px; font:inherit; font-size:.88rem; cursor:pointer; }
 .fold-n { font-family:var(--mono); font-size:.68rem; color:var(--fg3); }
@@ -991,6 +997,9 @@ function isDirty(id) {
   if (!w) return hasData(d);
   return JSON.stringify(d) !== JSON.stringify(stripMeta(clone(w)));
 }
+// A workout counts as done only if it was submitted and not skipped as a whole.
+const didWorkout = (k, t) => { const w = workouts[`${k}_${t}`]; return !!w && !w.skipped; };
+const SKIP_REASONS = ['Rest / recovery', 'Sick or injured', 'Travel', 'No time', 'No equipment', 'Other'];
 function hasData(d) {
   return d.exercises.some(e => e.skipped || (e.sets ? e.sets.some(s => num(s.r) !== null || num(s.v) !== null || num(s.w) !== null) : [e.duration, e.hr, e.distance, e.rounds, e.avgWatts, e.hrRec60].some(v => num(v) !== null))) || !!d.notes;
 }
@@ -1329,7 +1338,7 @@ function streakAndConsistency() {
   let d = today;
   while (true) {
     const s = sessionFor(d);
-    const done = s && s !== 'REST' && ['lift','core','cardio'].some(t => workouts[`${d}_${t}`]);
+    const done = s && s !== 'REST' && ['lift','core','cardio'].some(t => didWorkout(d, t));
     const rest = s === 'REST';
     if (rest) { d = addDays(d, -1); continue; }
     if (!done) break;
@@ -1343,7 +1352,7 @@ function streakAndConsistency() {
     const s = sessionFor(dd);
     if (!s || s === 'REST') continue;
     scheduled++;
-    if (['lift','core','cardio'].some(t => workouts[`${dd}_${t}`])) completed++;
+    if (['lift','core','cardio'].some(t => didWorkout(dd, t))) completed++;
   }
   const pct = scheduled ? Math.round(100 * completed / scheduled) : null;
   return { streak, completed, scheduled, pct };
@@ -1510,9 +1519,9 @@ function renderCalendar() {
   for (let i = 0; i < total; i++) {
     const d = new Date(viewYear, viewMonth, 1 - off + i), k = keyOf(d);
     const s = sessionFor(k);
-    const done = ['lift','core','cardio'].some(t => workouts[`${k}_${t}`]);
+    const done = ['lift','core','cardio'].some(t => didWorkout(k, t)), skippedDay = !done && ['lift','core','cardio'].some(t => workouts[`${k}_${t}`]?.skipped);
     const cls = ['day', d.getMonth() !== viewMonth && 'other', k === todayK && 'today', k === selK && 'sel', selRow >= 0 && Math.floor(i / 7) !== selRow && 'wk-out'].filter(Boolean).join(' ');
-    html += `<button type="button" class="${cls}" data-date="${k}" aria-label="${d.toDateString()}${s ? ', ' + s : ''}${done ? ', submitted' : ''}"><span class="dnum">${d.getDate()}</span>${s && s !== 'REST' ? `<i class="dot${done ? ' done' : ''}" style="color:${COLOR[s]}"></i>` : ''}</button>`;
+    html += `<button type="button" class="${cls}" data-date="${k}" aria-label="${d.toDateString()}${s ? ', ' + s : ''}${done ? ', submitted' : skippedDay ? ', skipped' : ''}"><span class="dnum">${d.getDate()}</span>${s && s !== 'REST' ? `<i class="dot${done ? ' done' : skippedDay ? ' skipped' : ''}" style="color:${COLOR[s]}"></i>` : ''}</button>`;
   }
   document.getElementById('calBody').innerHTML = html;
 }
@@ -1566,6 +1575,31 @@ function dayHead(k, session) {
   </div>`;
 }
 
+// Skip a whole lifting, core or cardio workout for the day. Turning it on logs the day as skipped right away (with an optional reason);
+// turning it off removes that record so the workout can be done after all.
+function skipWorkoutCard(type, k, d) {
+  const w = workouts[`${k}_${type}`], on = !!d.skipped, name = TYPES[type].toLowerCase();
+  const reasons = `<select data-act="skip-reason" aria-label="Reason">${['', ...SKIP_REASONS].map(r => `<option value="${esc(r)}" ${r === (d.skipReason || '') ? 'selected' : ''}>${r ? esc(r) : 'Reason (optional)'}</option>`).join('')}</select>`;
+  const when = on && w && w.skipped ? ` · logged ${new Date(w.submittedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}` : '';
+  return `<div class="skip-card${on ? ' on' : ''}">
+    <label class="switch"><input type="checkbox" data-act="skip-workout" ${on ? 'checked' : ''}><span>${on ? `${TYPES[type]} skipped today` : `Skip today's ${name}`}</span></label>
+    ${reasons}${on ? `<span class="note">${esc(d.skipReason || 'No reason given')}${when}. Turn the switch off to do it after all.</span>` : ''}
+  </div>`;
+}
+async function setWorkoutSkipped(type, on) {
+  const k = keyOf(selected), id = `${k}_${type}`, d = getDraft(type);
+  if (on) {
+    if (hasData(d) && !d.exercises.every(e => e.skipped) && !confirm(`Skip today's ${TYPES[type].toLowerCase()}? The sets you entered for today are kept in the draft but the day is logged as skipped.`)) { renderNow(); return; }
+    d.skipped = true; d.exercises.forEach(e => { e.skipped = true; });
+    saveDraftsSoon(); await submit(); return;
+  }
+  delete d.skipped; delete d.skipReason; d.exercises.forEach(e => { e.skipped = false; });
+  if (workouts[id] && workouts[id].skipped) {
+    delete workouts[id]; lsSet(LS.w, workouts); sheetsPublishSoon(); delete status[id];
+    if (db) db.collection('workouts').doc(id).delete().catch(() => {});
+  }
+  saveDraftsSoon(); renderCalendar(); renderNow();
+}
 const foldBar = () => `<div class="fold-bar"><button class="mini" data-act="fold-all" data-v="0">Collapse all</button><button class="mini" data-act="fold-all" data-v="1">Expand all</button></div>`;
 function renderDay(type) {
   const k = keyOf(selected), session = sessionFor(k);
@@ -1586,6 +1620,8 @@ function renderDay(type) {
       <button data-act="checkin-save">Save &amp; start</button>
     </div>
   </div>` : '';
+  const skipCard = skipWorkoutCard(type, k, d);
+  if (d.skipped) return dayHead(k, session) + skipCard;
   let body = '';
   if (type === 'lift') {
     body = phaseBanner(k, 'lift')
@@ -1600,7 +1636,7 @@ function renderDay(type) {
     return foldEx(`x:core:${ex.planned}`, String(i + 1).padStart(2, '0'), ex.name, ex.skipped ? 'skipped' : `${p[1]} × ${p[2]} · ${setsDone(ex)}`, coreRow(ex, i, session, k));
   }).join('');
   if (type === 'cardio') { const ex = d.exercises[0], c = cardioPlan(session, k); body = phaseBanner(k, 'cardio') + foldEx('x:cardio', '', `${c.type} · ${ex.machine || c.recommended}`, ex.skipped ? 'skipped' : c.type === 'HIIT' ? `${c.rounds} rounds${num(ex.rounds) ? ` · logged ${ex.rounds}` : ''}` : `${c.duration} min${num(ex.duration) ? ` · logged ${ex.duration}` : ''}`, cardioRow(ex, session, k)); }
-  return dayHead(k, session) + checkinBanner +
+  return dayHead(k, session) + skipCard + checkinBanner +
     `<div class="colheads"><div>Plan · target today</div><div>What you did</div></div>` +
     body + submitBar(type, k, d);
 }
@@ -1816,6 +1852,7 @@ function summaryOf(w) {
   return e.skipped ? 'Skipped' : `${e.planned} · ${e.duration ?? '?'} min${e.hr ? ` · ${e.hr} bpm` : ''}`;
 }
 function detailTable(w) {
+  if (w.skipped) return `<div class="note">Whole workout skipped${w.skipReason ? ': ' + esc(w.skipReason) : ''}.</div>`;
   if (w.type === 'cardio') {
     const e = w.exercises[0] || {}, hx = e.workSec != null || e.restSec != null || e.avgWatts != null || e.hrRec60 != null;
     return `<table class="htable"><thead><tr><th>Type</th><th>Machine</th><th>Min</th><th>Avg HR</th><th>Max HR</th><th>Miles</th><th>Rounds</th>${hx ? '<th>Work:Rest</th><th>Avg W</th><th>HR rec 60s</th>' : ''}<th>Speed / level</th></tr></thead>
@@ -1834,7 +1871,7 @@ function renderHistory() {
   const list = filteredWorkouts();
   const csv = csvPanel();
   const items = list.map(w => `<details class="hw">
-      <summary><span class="hw-date">${longDate(w.date)}</span><span class="badge" style="background:color-mix(in srgb,${COLOR[w.session] || 'var(--fg3)'} 18%,transparent);color:${COLOR[w.session] || 'var(--fg2)'}">${TYPES[w.type]}${w.session && w.session !== 'REST' ? ' · ' + w.session : ''}</span><span class="hw-sum">${esc(summaryOf(w))}${(() => { const n = sessionPRs(w).length; return n ? `<span class="pr">${n} PR</span>` : ''; })()}</span></summary>
+      <summary><span class="hw-date">${longDate(w.date)}</span><span class="badge" style="background:color-mix(in srgb,${COLOR[w.session] || 'var(--fg3)'} 18%,transparent);color:${COLOR[w.session] || 'var(--fg2)'}">${TYPES[w.type]}${w.session && w.session !== 'REST' ? ' · ' + w.session : ''}</span>${w.skipped ? '<span class="badge skip-badge">Skipped</span>' : ''}<span class="hw-sum">${esc(w.skipped ? (w.skipReason || 'Skipped') : summaryOf(w))}${(() => { const n = sessionPRs(w).length; return n ? `<span class="pr">${n} PR</span>` : ''; })()}</span></summary>
       <div class="hw-body">
         <div class="htable-wrap">${detailTable(w)}</div>
         ${w.notes ? `<div class="hw-notes"><span class="field-label">Notes</span><br>${esc(w.notes)}</div>` : ''}
@@ -1862,21 +1899,22 @@ function renderHistory() {
 }
 
 // ═══ CSV ════════════════════════════════════════════════════════════
-const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s'];
+const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason'];
 const cq = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const TYPE_ORDER = { lift:0, core:1, cardio:2 };
 function workoutRows(list) {
   const rows = [CSV_HEAD];
   for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date) || (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9))) {
+    if (w.skipped) { rows.push([w.date, w.session, TYPES[w.type], '(whole workout)', '', 'Yes', '', '', '', '', '', '', '', '', '', '', '', '', w.notes, '', '', '', '', '', '', '', 'Yes', w.skipReason || '']); continue; }
     for (const e of w.exercises) {
       const base = [w.date, w.session, TYPES[w.type], e.name, e.planned, e.skipped ? 'Yes' : 'No'];
-      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60]);
+      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60, '', '']);
       else {
         const mg = w.type === 'lift' ? musclesOf(e.name).join(' / ') : 'Core';
         const prior = w.type === 'lift' && !e.skipped ? bestBefore(e.name, w.date) : null;
         e.sets.forEach((s, j) => { const est = w.type === 'lift' ? e1rm(num(s.w), num(s.r)) : null; rows.push([...base, j + 1,
           s.w, w.type === 'lift' ? s.r : '', w.type === 'core' ? s.v : '', w.type === 'core' ? e.unit : 'lb×reps',
-          '', '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '']); });
+          '', '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '', '', '']); });
       }
     }
   }
@@ -2545,7 +2583,7 @@ function renderProgress() {
   // Lifting
   const ls = liftSeries(lo, hi), names = Object.keys(ls).sort((a, b) => ls[b].length - ls[a].length || a.localeCompare(b));
   if (!ls[pr.ex]) pr.ex = KEY_LIFTS.find(n => ls[n]) || names[0] || '';
-  const lifts = Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo && w.date <= hi);
+  const lifts = Object.values(workouts).filter(w => w.type === 'lift' && !w.skipped && w.date >= lo && w.date <= hi);
   h += `<div class="sec-title" style="--sc:var(--push)">Lifting</div>`;
   const keyTiles = KEY_LIFTS.filter(n => ls[n]).slice(0, 5).map(n => { const s = ls[n], a = s[0], b = s[s.length - 1]; return tile(n.replace('Barbell ', '').replace('Conventional ', ''), `${b.v} lb`, s.length > 1 ? `${sgn(b.v - a.v, 0)} lb e1RM` : `e1RM · ${shortDate(b.date)}`, trendCls(s.length > 1 ? b.v - a.v : null)); }).join('');
   const vol = lifts.reduce((a, w) => a + w.exercises.reduce((b, e) => b + (e.skipped ? 0 : e.sets.reduce((c, s) => c + (num(s.w) || 0) * (num(s.r) || 0), 0)), 0), 0);
@@ -2598,7 +2636,7 @@ function renderProgress() {
   h += `</div>`;
 
   // Core
-  const core = Object.values(workouts).filter(w => w.type === 'core' && w.date >= lo && w.date <= hi).sort((a, b) => a.date.localeCompare(b.date));
+  const core = Object.values(workouts).filter(w => w.type === 'core' && !w.skipped && w.date >= lo && w.date <= hi).sort((a, b) => a.date.localeCompare(b.date));
   const cs = w => { let reps = 0, sec = 0, sets = 0; w.exercises.forEach(e => { if (e.skipped) return; e.sets.forEach(s => { const v = num(s.v); if (!v) return; sets++; if (e.unit === 'sec') sec += v; else if (e.unit === 'reps') reps += v; }); }); return { reps, sec, sets }; };
   const ct = core.reduce((a, w) => { const s = cs(w); a.reps += s.reps; a.sec += s.sec; a.sets += s.sets; return a; }, { reps:0, sec:0, sets:0 });
   h += `<div class="sec-title" style="--sc:var(--pull)">Core</div>`;
@@ -2657,7 +2695,7 @@ function muscleSection(lo, today) {
     <div class="card"><div class="wk-nav"><button class="nav-btn" data-act="p-wk" data-v="-1" aria-label="Previous week">&#8249;</button><span class="lbl">${shortDate(wk)} – ${shortDate(addDays(wk, 6))}${isNow ? ' · this week' : ''}</span><button class="nav-btn" data-act="p-wk" data-v="1" aria-label="Next week" ${isNow ? 'disabled' : ''}>&#8250;</button></div>
     ${any || Object.keys(last).length ? `<div class="htable-wrap"><table class="htable mtable"><thead><tr><th>Muscle</th><th>Sets</th><th>10–20 set band</th><th>Reps</th><th>Volume lb</th><th>vs prior wk</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="note" style="margin:10px 0 0;line-height:1.5">Working sets with reps logged. A lift counts 1 set for its main muscle and ½ for the helper (bench → chest 1, triceps ½). Volume is weight × reps on the main muscle. Most lifters grow well on 10–20 hard sets per muscle per week.</p>` : `<div class="chart-empty" style="height:120px">No working sets logged this week yet.</div>`}</div>`;
-  const lifts = Object.values(workouts).filter(w => (w.type === 'lift' || w.type === 'core') && w.date >= lo && w.date <= today);
+  const lifts = Object.values(workouts).filter(w => (w.type === 'lift' || w.type === 'core') && !w.skipped && w.date >= lo && w.date <= today);
   const weeks = lifts.length ? weekRange(lifts.map(w => w.date).sort()[0], today) : [];
   const per = weeks.map(muscleWeek);
   const used = MUSCLES.filter(g => per.some(m => m[g]?.sets));
@@ -2712,6 +2750,15 @@ main.addEventListener('click', e => {
   main.querySelectorAll('.fold[data-fold]').forEach(box => setFold(box, open));
   const ovl = main.querySelector('details[data-key="ovl"]'); if (ovl) { ovl.open = open; ovlOpen = open; if (open) foldClosed.delete('ovl'); else foldClosed.add('ovl'); }
   saveFolds();
+});
+main.addEventListener('change', e => {
+  const t = e.target, type = tab;
+  if (!TYPES[type]) return;
+  if (t.dataset.act === 'skip-workout') { setWorkoutSkipped(type, t.checked); return; }
+  if (t.dataset.act === 'skip-reason') {
+    const d = getDraft(type); d.skipReason = t.value || undefined; if (!d.skipReason) delete d.skipReason; saveDraftsSoon();
+    if (d.skipped) submit(); // already logged as skipped: update the reason on the record
+  }
 });
 main.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('b[data-act="fold"]')) { e.preventDefault(); e.target.click(); } });
 main.addEventListener('toggle', e => { const d = e.target; if (d.tagName === 'DETAILS' && d.dataset.key === 'ovl') { ovlOpen = d.open; if (d.open) foldClosed.delete('ovl'); else foldClosed.add('ovl'); saveFolds(); return; } if (d.tagName === 'DETAILS' && d.dataset.key) { if (d.open) openDetails.add(d.dataset.key); else openDetails.delete(d.dataset.key); } }, true);
@@ -2850,6 +2897,7 @@ async function submit() {
     status[id] = { cls:'dirty', text:'Saved on this device. Will sync when storage connects.' };
   } else delete status[id];
   renderCalendar(); renderNow();
+  if (doc.skipped) return;
   if (tab === 'lift') {
     const sumEl = document.createElement('div');
     sumEl.innerHTML = sessionSummaryHTML(workouts[id], tab, k);
