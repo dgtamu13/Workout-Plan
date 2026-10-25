@@ -22,7 +22,7 @@ const ls = {};
 const ctx = {
   console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp,
   localStorage: { getItem: k => (k in ls ? ls[k] : null), setItem: (k, v) => { ls[k] = String(v); } },
-  location: { hash: '' }, ProgramLib,
+  location: { hash: '' }, ProgramLib, MachineLib: require('../docs/machines.js'),
 };
 vm.createContext(ctx);
 vm.runInContext(`
@@ -30,7 +30,7 @@ const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); re
 const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);
 ${code}
 `, ctx);
-const run = src => { const v = vm.runInContext(src, ctx); return v === undefined ? v : JSON.parse(JSON.stringify(v)); };
+const run = src => { vm.runInContext('resetCal()', ctx); const v = vm.runInContext(src, ctx); return v === undefined ? v : JSON.parse(JSON.stringify(v)); };
 const J = JSON.stringify;
 
 let passed = 0, failed = 0;

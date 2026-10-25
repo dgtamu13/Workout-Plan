@@ -82,15 +82,15 @@ function makeSync(b, store = {}) {
   vm.createContext(ctx); vm.runInContext(fs.readFileSync(docs('sheets-sync.js'), 'utf8'), ctx);
   return { S: ctx.SheetsSync, store, ctx };
 }
-const TABLES = { Workouts: [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', null]], Body: [['Date', 'Weight (lb)'], ['2026-10-20', 171.5]], Meals: [['Date', 'Food']], Fatigue: [['Date', 'Sleep (1-5)'], ['2026-10-20', 4]], Program: [['Area', 'Name'], ['Meta', 'version']], 'Meal Plan': [['Area', 'Item'], ['Meta', 'last calorie change']] };
+const TABLES = { Workouts: [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', null]], Body: [['Date', 'Weight (lb)'], ['2026-10-20', 171.5]], Meals: [['Date', 'Food']], Fatigue: [['Date', 'Sleep (1-5)'], ['2026-10-20', 4]], Program: [['Area', 'Name'], ['Meta', 'version']], 'Meal Plan': [['Area', 'Item'], ['Meta', 'last calorie change']], Machines: [['Exercise', 'Machine'], ['Cable Lateral Raise', 'Precor cable']] };
 const settle = () => new Promise(r => setTimeout(r, 30));
 
-check('First connect creates the folder, the Sheet inside it, the plan file and six tabs with the data', async () => {
+check('First connect creates the folder, the Sheet inside it, the plan file and seven tabs with the data', async () => {
   const b = backend(), { S } = makeSync(b); S.configure({ getTables: () => TABLES });
   assert.strictEqual(S.state(), 'off'); assert.strictEqual(await S.connect(), true); assert.strictEqual(S.state(), 'ok'); assert.ok(S.lastPublished());
   const folder = b.files.find(f => f.mimeType === 'application/vnd.google-apps.folder'), sheet = b.files.find(f => f.mimeType === 'application/vnd.google-apps.spreadsheet'), plan = b.files.find(f => f.name === 'next-week-plan.json');
   assert.strictEqual(folder.name, 'Training Calendar Data'); assert.deepStrictEqual(folder.parents, []); assert.strictEqual(sheet.name, 'Training Calendar'); assert.deepStrictEqual(sheet.parents, [folder.id]); assert.deepStrictEqual(plan.parents, [folder.id]);
-  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan', 'Plan']); assert.ok(t.filter(x => x.title !== 'Plan').every(x => x.grid.frozenRowCount === 1), 'header row frozen');
+  const t = b.sheets[sheet.id].tabs; assert.deepStrictEqual(t.map(x => x.title), ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan', 'Machines', 'Plan']); assert.ok(t.filter(x => x.title !== 'Plan').every(x => x.grid.frozenRowCount === 1), 'header row frozen');
   const v = b.sheets[sheet.id].values; assert.deepStrictEqual(v.Workouts, [['Date', 'Session', 'Reps'], ['2026-10-20', 'PUSH A', 12], ['2026-10-20', '=HYPERLINK("x")', '']]); assert.deepStrictEqual(v.Body[1], ['2026-10-20', 171.5]);
   assert.strictEqual(b.lastBody.valueInputOption, 'RAW', 'text such as =HYPERLINK stays text'); assert.ok(typeof v.Body[1][1] === 'number'); assert.deepStrictEqual(v['Meal Plan'], [['Area', 'Item'], ['Meta', 'last calorie change']]); assert.deepStrictEqual(v.Program[1], ['Meta', 'version']);
   assert.ok(/"schema": "training-calendar-next-week-plan"/.test(plan.content)); assert.deepStrictEqual(plain(S.links()), { sheet: `https://docs.google.com/spreadsheets/d/${sheet.id}/edit`, folder: `https://drive.google.com/drive/folders/${folder.id}` });

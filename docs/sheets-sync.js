@@ -7,7 +7,7 @@
   const CLIENT_ID = '358985473662-1qsq1f7ku4c409uhj7a185rlq241ses0.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
   const FOLDER_NAME = 'Training Calendar Data', SHEET_NAME = 'Training Calendar', PLAN_FILE = 'next-week-plan.json', PLAN_TAB = 'Plan';
-  const TABS = ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan'];
+  const TABS = ['Workouts', 'Body', 'Meals', 'Fatigue', 'Program', 'Meal Plan', 'Machines'];
   const STORE_KEY = 'derek-tc-sheets-v1', TOKEN_KEY = 'derek-tc-sheets-token', DRIVE_TOKEN_KEY = 'derek-tc-drive-token';
   const DRIVE = 'https://www.googleapis.com/drive/v3', UPLOAD = 'https://www.googleapis.com/upload/drive/v3', SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
   const PLACEHOLDER = {
