@@ -217,6 +217,19 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .opt small { color:var(--fg3); font-size:.68rem; white-space:nowrap; }
 .opt.cur { color:var(--accent); font-weight:600; }
 
+.mach { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:8px; font-size:.78rem; color:var(--fg2); }
+.mach-l { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--fg3); }
+.mach select { font:inherit; font-family:var(--sans, inherit); text-transform:none; letter-spacing:0; font-size:.82rem; color:var(--fg); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:4px 6px; max-width:58vw; }
+.mach-info { font-size:.76rem; color:var(--fg2); }
+.mach-form { margin-top:8px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--card); font-size:.8rem; display:grid; gap:8px; }
+.mach-form .mf-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
+.mach-form label { display:grid; gap:4px; color:var(--fg2); }
+.mach-form input, .mach-form select { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:6px; min-width:0; }
+.mach-form .mf-check { display:flex; align-items:center; gap:6px; }
+.mach-form .mf-check input { width:auto; }
+.mach-form .mf-factor { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.mach-form .mf-factor input { width:80px; }
+.mach-form .mf-btns { display:flex; flex-wrap:wrap; gap:6px; }
 .meta { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin-top:8px; font-family:var(--mono); font-size:.74rem; color:var(--fg2); }
 .tag { display:inline-block; font-family:var(--sans); font-size:.6rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:4px; background:var(--acc-dim); color:var(--accent); }
 .tag.tempo { background:color-mix(in srgb,var(--green) 16%,transparent); color:var(--green); }
@@ -629,6 +642,7 @@ body.resting .main { padding-bottom:120px; }
 <script src="vendor/chart.umd.js"></script>
 <script src="drive-sync.js"></script>
 <script src="program.js"></script>
+<script src="machines.js"></script>
 <script src="plan-proposal.js"></script>
 <script src="sheets-sync.js"></script>
 <script>
@@ -1020,18 +1034,71 @@ function readiness(k) {
 // Weight multiplier for the day: 10% lighter on a low-readiness day, otherwise unchanged.
 function fatigueAdjust(k) { const r = readiness(k); return r && r.low ? LOW_READY : 1.0; }
 
-// Prior sessions of a lift, newest first. Deload-week and low-readiness sessions are skipped so progression
-// resumes from the last normal session.
-function liftHistory(name, k, count) {
-  const out = [];
+// ═══ Machines (registry and calibration in machines.js) ═════════════
+// Each logged lift carries the machine it was done on (ex.machine, '' = not set). Weights are stored as read off that machine
+// (lb, kg or plate number) and converted to the exercise's reference machine before they are compared, so a switch from one
+// cable stack to another neither looks like a PR nor resets progression. Calibrations are cached until the next render.
+const MACH_LS = 'derek-tc-machines-v1';
+let machineReg = MachineLib.normalize(lsGet(MACH_LS, null));
+let _cal = {};
+const resetCal = () => { _cal = {}; };
+const exMachine = (name, e) => MachineLib.resolve(machineReg, name, e && e.machine);
+const machineName = id => (id && machineReg.machines[id] && machineReg.machines[id].name) || '';
+const r2 = x => Math.round(x * 100) / 100;
+const e1x = (w, r) => (w > 0 && r > 0) ? w * (1 + r / 30) : 0;
+const normalDay = d => !programInfo(d).deload && fatigueAdjust(d) >= 1;
+function calFor(name) {
+  if (_cal[name]) return _cal[name];
+  const ss = [];
+  for (const w of Object.values(workouts)) {
+    if (w.type !== 'lift' || w.skipped || !normalDay(w.date)) continue;
+    const e = w.exercises.find(x => x.name === name && !x.skipped); if (!e) continue;
+    const id = exMachine(name, e), m = MachineLib.get(machineReg, id);
+    const e1 = Math.max(0, ...e.sets.map(s => e1x(MachineLib.toLb(m, num(s.w) || 0), num(s.r))));
+    if (e1) ss.push({ date:w.date, machine:id, e1 });
+  }
+  return (_cal[name] = MachineLib.calibrate(machineReg, name, ss));
+}
+// Reference-lb per unit shown on the machine an exercise was logged on, or null while that machine is uncalibrated.
+const exScale = (name, e) => MachineLib.scale(machineReg, calFor(name), exMachine(name, e));
+const refW = (name, e, w) => { const c = exScale(name, e); return c == null || w == null ? null : c === 1 ? w : w * c; };
+const volW = (name, e, w) => refW(name, e, w) ?? w;
+const wUnit = e => MachineLib.label(MachineLib.get(machineReg, exMachine(e.name, e)));
+// Logged working sets as text, with the unit when the machine does not show pounds; exLabel adds the machine name.
+const liftSets = (e, sets = e.sets.filter(s => num(s.r) > 0)) => { const u = wUnit(e) === 'lb' ? '' : wUnit(e); return sets.map(s => `${fmtW(num(s.w))}${num(s.w) ? u : ''}×${s.r}`).join(', '); };
+const exLabel = e => { const m = machineName(exMachine(e.name, e)); return m ? `${e.name} (${m})` : e.name; };
+const exVol = e => e.skipped ? 0 : e.sets.reduce((b, s) => b + (volW(e.name, e, num(s.w)) || 0) * (num(s.r) || 0), 0);
+// The machine an exercise was last logged on (as stored, so '' when not set).
+function lastMachine(name, k) {
+  for (const w of priorWorkouts('lift', k)) { const e = w.exercises.find(x => x.name === name && !x.skipped); if (e) return e.machine || ''; }
+  return '';
+}
+// Units, rounding and scale for the machine a lift is done on today. c is null when the machine still needs calibrating.
+function machineCtx(name, id) {
+  const rid = MachineLib.resolve(machineReg, name, id), m = MachineLib.get(machineReg, rid), U = MachineLib.label(m), cal = calFor(name);
+  // With no history the machine used today becomes the reference.
+  return { id:rid, m, U, R:MachineLib.rounder(m), step:MachineLib.step(m), c: cal.ref == null ? MachineLib.unitLb(m) : MachineLib.scale(machineReg, cal, rid), micro: U === 'lb' ? 0.5 : U === 'kg' ? 0.25 : null };
+}
+// Prior sessions of a lift, newest first, with weights in the units of machine context mc (reference lb while mc is uncalibrated).
+// Deload-week and low-readiness sessions are skipped so progression resumes from the last normal session.
+function liftHistory(name, k, count, mc = machineCtx(name, lastMachine(name, k))) {
+  const out = [], to = mc.c ?? 1;
   for (const w of priorWorkouts('lift', k)) {
-    if (programInfo(w.date).deload || fatigueAdjust(w.date) < 1) continue;
+    if (!normalDay(w.date)) continue;
     const e = w.exercises.find(x => x.name === name && !x.skipped && x.sets.some(s => num(s.r) > 0));
-    if (e) { out.push({ date:w.date, sets:e.sets.filter(s => num(s.r) > 0) }); if (out.length >= count) break; }
+    if (!e) continue;
+    const raw = e.sets.filter(s => num(s.r) > 0), id = exMachine(name, e);
+    let sets = raw;
+    if (id !== mc.id) {
+      const c = exScale(name, e); if (c == null) continue;
+      const R = mc.c == null ? (x => Math.round(x * 2) / 2) : mc.R;
+      sets = raw.map(s => ({ ...s, w: num(s.w) ? R(num(s.w) * c / to) : s.w }));
+    }
+    out.push({ date:w.date, sets, raw, machine:id });
+    if (out.length >= count) break;
   }
   return out;
 }
-const lastLift = (name, k) => liftHistory(name, k, 1)[0] || null;
 // Double progression from Day 1. Same weight until every working set hits the top of the bracket, then add the increment
 // (+5 lb upper, +10 lb lower). A lift that stalls for two sessions gets a +0.5 lb micro-load.
 const round25 = w => Math.round(w / 2.5) * 2.5;
@@ -1045,25 +1112,40 @@ function firstSession(name, p, session, k, lo, hi, n) {
   return { targets:Array.from({length:n}, (_, i) => ({ w:null, r: wave ? WAVE_REPS[i % 6] : r0 })), last:null, wave,
     status:{ cls:'calib', text:'Calibrate' }, why };
 }
-function liftRec(name, p, session, k) { return applyReadiness(applyAgentTarget(planLiftRec(name, p, session, k), name, session, k), k); }
+// machine: the id the lift is done on today (default: the machine it was last logged on). Targets come back in that machine's units.
+function liftRec(name, p, session, k, machine) {
+  const mc = machineCtx(name, machine === undefined ? lastMachine(name, k) : machine);
+  const incLb = liftInc(session, name);
+  mc.inc = mc.c ? (mc.c === 1 && mc.U === 'lb' ? incLb : Math.max(mc.step, mc.R(incLb / mc.c))) : incLb;
+  let rec = planLiftRec(name, p, session, k, mc);
+  if (mc.c == null && rec.last) {
+    const ref = calFor(name).ref;
+    rec = { ...rec, targets: rec.targets.map(t => ({ ...t, w:null })), status:{ cls:'calib', text:'Calibrate' }, waveTo:null, micro:false, calib:true,
+      why:`First time on ${machineName(mc.id) || 'this machine'} for this lift. Pick a weight that leaves about ${p[1].replace(/^RIR\s*/i, '')} reps in reserve and log every set; today calibrates it against ${machineName(ref) || 'your earlier sessions'}, and progression carries on from there.` };
+  }
+  rec = applyReadiness(applyAgentTarget(rec, name, session, k, mc), k);
+  return Object.assign(rec, { U:mc.U, R:mc.R, inc:mc.inc, mc });
+}
 // A target load written by the training agent (targetLb on the program exercise) replaces the computed weight until a session reaches it,
 // after which the normal progression takes over. Deload weeks keep the weights you last used.
-function applyAgentTarget(rec, name, session, k) {
-  const e = ProgramLib.bySession(PROGRAM, session, name), T = e && e.targetLb;
-  if (!T || programInfo(k).deload) return rec;
+// targetLb is in reference-machine pounds; it is converted to today's machine.
+function applyAgentTarget(rec, name, session, k, mc) {
+  const e = ProgramLib.bySession(PROGRAM, session, name), TL = e && e.targetLb;
+  if (!TL || programInfo(k).deload || !mc.c) return rec;
+  const T = mc.c === 1 && mc.U === 'lb' ? TL : mc.R(TL / mc.c), U = mc.U;
   const W = rec.last ? Math.max(...rec.last.sets.map(s => num(s.w) || 0)) : 0;
   if (W >= T) return rec;
-  if (rec.wave) { const a = round25(T * 0.9), b = round25(T * 0.95), ws = [a, b, T, a, b, T]; rec.targets = rec.targets.map((t, i) => ({ ...t, w: ws[i % 6] })); rec.waveTo = `${T} lb peak · 5/4/3 ×2`; }
+  if (rec.wave) { const a = mc.R(T * 0.9), b = mc.R(T * 0.95), ws = [a, b, T, a, b, T]; rec.targets = rec.targets.map((t, i) => ({ ...t, w: ws[i % 6] })); rec.waveTo = `${T} ${U} peak · 5/4/3 ×2`; }
   else rec.targets = rec.targets.map(t => ({ ...t, w: T }));
-  rec.why = `Training agent target: ${T} lb. ${rec.why}`;
-  rec.status = { cls: 'up', text: `Agent target ${T} lb` };
+  rec.why = `Training agent target: ${T} ${U}${T !== TL || U !== 'lb' ? ` (${TL} lb on the reference machine)` : ''}. ${rec.why}`;
+  rec.status = { cls: 'up', text: `Agent target ${T} ${U}` };
   return rec;
 }
 function applyReadiness(rec, k) {
   const r = readiness(k);
   if (!r) return rec;
   if (r.low && rec.targets.some(t => t.w > 0)) {
-    rec.targets = rec.targets.map(t => t.w > 0 ? { ...t, w: round25(t.w * LOW_READY) } : t);
+    rec.targets = rec.targets.map(t => t.w > 0 ? { ...t, w: (rec.R || round25)(t.w * LOW_READY) } : t);
     if (rec.waveTo) rec.waveTo += ' · −10% today';
     rec.fatigue = 'low';
     rec.why = `Low readiness today (${r.score.toFixed(1)}/5), so targets are 10% lighter. Your next session's targets ignore today. ${rec.why}`;
@@ -1073,11 +1155,11 @@ function applyReadiness(rec, k) {
   }
   return rec;
 }
-function planLiftRec(name, p, session, k) {
+function planLiftRec(name, p, session, k, mc = machineCtx(name, lastMachine(name, k))) {
   const [lo, hi] = range(p[3]); const n = +p[2];
   const info = programInfo(k), S = isStrength(session);
-  const hist = liftHistory(name, k, 2), last = hist[0] || null;
-  const inc = liftInc(session, name);
+  const hist = liftHistory(name, k, 2, mc), last = hist[0] || null;
+  const inc = mc.inc ?? liftInc(session, name), U = mc.U, R = mc.R;
   if (!last) return firstSession(name, p, session, k, lo, hi, n);
   const W = Math.max(...last.sets.map(s => num(s.w) || 0));
   const top = last.sets.filter(s => (num(s.w) || 0) === W);
@@ -1090,40 +1172,40 @@ function planLiftRec(name, p, session, k) {
   let targets, why, status, micro = false, waveTo = null;
   if (info.deload) {
     targets = Array.from({length:n}, (_, i) => ({ w:W, r:Math.min(hi, Math.max(lo, ref(i).r)) }));
-    why = `Deload week: keep ${fmtW(W)}${W ? ' lb' : ''}, ${n} sets instead of your usual number. Stop well short of failure.`;
+    why = `Deload week: keep ${fmtW(W)}${W ? ' ' + U : ''}, ${n} sets instead of your usual number. Stop well short of failure.`;
     status = { cls:'calib', text:'Deload · same weight' };
   } else if (isWave(p)) {
     const lastWasWave = last.sets.length >= 6 && last.sets.some(s => (num(s.w) || 0) < W);
     const earned = lastWasWave ? (top.length >= 2 && top.every(s => s.r >= 3)) : allTop;
     const Wn = W && earned ? W + inc : W;
-    const a = round25(Wn * 0.9), b = round25(Wn * 0.95), ws = [a, b, Wn, a, b, Wn];
+    const a = R(Wn * 0.9), b = R(Wn * 0.95), ws = [a, b, Wn, a, b, Wn];
     targets = Array.from({length:n}, (_, i) => ({ w:ws[i % 6], r:WAVE_REPS[i % 6] }));
-    waveTo = `${Wn} lb peak · 5/4/3 ×2`;
-    why = earned && W ? `Peak sets at ${W} lb were clean. Peak at ${Wn} lb today: waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn}, twice.`
-                      : `Waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn} lb, twice. Add ${inc} lb to the peak once every peak set is clean.`;
-    status = earned && W ? { cls:'up', text:`Add ${inc} lb` } : { cls:'build', text:'Waves 5/4/3' };
+    waveTo = `${Wn} ${U} peak · 5/4/3 ×2`;
+    why = earned && W ? `Peak sets at ${W} ${U} were clean. Peak at ${Wn} ${U} today: waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn}, twice.`
+                      : `Waves of 5 at ${a}, 4 at ${b}, 3 at ${Wn} ${U}, twice. Add ${inc} ${U} to the peak once every peak set is clean.`;
+    status = earned && W ? { cls:'up', text:`Add ${inc} ${U}` } : { cls:'build', text:'Waves 5/4/3' };
   } else if (allTop) {
     const rr = stepDown(n, lo, hi);
     targets = Array.from({length:n}, (_, i) => ({ w: W ? W + inc : 0, r: W ? rr(i) : hi + 1 }));
-    why = `All ${n} sets hit ${hi} reps at ${W} lb. Add ${inc} lb and restart at ${targets.map(t => t.r).join('/')}.`;
-    status = { cls:'up', text:`Add ${inc} lb` };
+    why = `All ${n} sets hit ${hi} reps at ${W} ${U}. Add ${inc} ${U} and restart at ${targets.map(t => t.r).join('/')}.`;
+    status = { cls:'up', text:`Add ${inc} ${U}` };
   } else if (allLow && !noDrop) {
-    targets = Array.from({length:n}, () => ({ w: Math.max(0, W - inc), r: lo }));
-    why = `Every set at ${W} lb fell below ${lo} reps. Drop to ${W - inc} lb and own the range.`;
-    status = { cls:'down', text:`Drop ${inc} lb` };
+    targets = Array.from({length:n}, () => ({ w: Math.max(0, r2(W - inc)), r: lo }));
+    why = `Every set at ${W} ${U} fell below ${lo} reps. Drop to ${r2(W - inc)} ${U} and own the range.`;
+    status = { cls:'down', text:`Drop ${inc} ${U}` };
   } else if (allLow) {
     targets = Array.from({length:n}, () => ({ w:W, r:lo }));
-    why = `Every set at ${W} lb fell below ${lo} reps. Strength-day weights are held in this phase: stay at ${W} lb and build reps.`;
+    why = `Every set at ${W} ${U} fell below ${lo} reps. Strength-day weights are held in this phase: stay at ${W} ${U} and build reps.`;
     status = { cls:'build', text:'Hold weight' };
-  } else if (W && hist.length >= 2 && Math.max(...hist[1].sets.map(s => num(s.w) || 0)) === W
+  } else if (W && mc.micro && hist.length >= 2 && hist[1].machine === last.machine && Math.max(...hist[1].sets.map(s => num(s.w) || 0)) === W
              && last.sets.filter(s => (num(s.w) || 0) === W).reduce((t, s) => t + s.r, 0) <= hist[1].sets.filter(s => (num(s.w) || 0) === W).reduce((t, s) => t + s.r, 0)) {
     micro = true;
-    targets = Array.from({length:n}, (_, i) => ({ w:W + 0.5, r:Math.min(hi, Math.max(lo, ref(i).r)) }));
-    why = `Stalled at ${W} lb for two sessions. Micro-load to ${W + 0.5} lb and match last time's reps.`;
-    status = { cls:'up', text:'Micro-load +0.5 lb' };
+    targets = Array.from({length:n}, (_, i) => ({ w:W + mc.micro, r:Math.min(hi, Math.max(lo, ref(i).r)) }));
+    why = `Stalled at ${W} ${U} for two sessions. Micro-load to ${W + mc.micro} ${U} and match last time's reps.`;
+    status = { cls:'up', text:`Micro-load +${mc.micro} ${U}` };
   } else {
     targets = Array.from({length:n}, (_, i) => ({ w:W, r:Math.min(hi, Math.max(lo, ref(i).r + 1)) }));
-    why = `Stay at ${fmtW(W)}${W ? ' lb' : ''}. Add a rep per set until all ${n} sets reach ${hi}, then add ${inc} lb.`;
+    why = `Stay at ${fmtW(W)}${W ? ' ' + U : ''}. Add a rep per set until all ${n} sets reach ${hi}, then add ${inc} ${U}.`;
     status = { cls:'build', text:`${atTop}/${n} sets at ${hi}` };
   }
   return { targets, why, last, status, micro, wave:isWave(p), waveTo };
@@ -1226,7 +1308,7 @@ function muscleWeek(wk) {
       if (e.skipped || !e.sets) return;
       if (w.type === 'lift') {
         const [g1, g2] = musclesOf(e.name);
-        e.sets.forEach(s => { const r = num(s.r); if (!(r > 0)) return; const x = row(g1); x.sets += 1; x.reps += r; x.vol += (num(s.w) || 0) * r; if (g2) row(g2).sets += 0.5; });
+        e.sets.forEach(s => { const r = num(s.r); if (!(r > 0)) return; const x = row(g1); x.sets += 1; x.reps += r; x.vol += (volW(e.name, e, num(s.w)) || 0) * r; if (g2) row(g2).sets += 0.5; });
       } else if (w.type === 'core') {
         e.sets.forEach(s => { const v = num(s.v); if (!(v > 0)) return; const x = row('Core'); x.sets += 1; if (e.unit === 'reps') x.reps += v; x.vol += (num(s.w) || 0) * (e.unit === 'reps' ? v : 0); });
       }
@@ -1242,7 +1324,7 @@ function bestBefore(name, k) {
     if (w.type !== 'lift' || w.date >= k) continue;
     for (const e of w.exercises) {
       if (e.skipped || e.name !== name) continue;
-      for (const s of e.sets) { const v = e1rm(num(s.w), num(s.r)); if (v && (!best || v > best.v)) best = { v, w:num(s.w), r:num(s.r), date:w.date }; }
+      for (const s of e.sets) { const v = e1rm(refW(name, e, num(s.w)), num(s.r)); if (v && (!best || v > best.v)) best = { v, w:num(s.w), r:num(s.r), date:w.date, machine:exMachine(name, e) }; }
     }
   }
   return best;
@@ -1253,14 +1335,14 @@ function sessionPRs(w) {
   w.exercises.forEach(e => {
     if (e.skipped) return;
     const prior = bestBefore(e.name, w.date); if (!prior) return;
-    const top = Math.max(0, ...e.sets.map(s => e1rm(num(s.w), num(s.r)) || 0));
+    const top = Math.max(0, ...e.sets.map(s => e1rm(refW(e.name, e, num(s.w)), num(s.r)) || 0));
     if (top > prior.v) out.push({ name:e.name, v:top, prev:prior.v });
   });
   return out;
 }
 function allTimePRs() {
   const m = {};
-  Object.values(workouts).forEach(w => { if (w.type !== 'lift') return; w.exercises.forEach(e => { if (e.skipped) return; e.sets.forEach(s => { const v = e1rm(num(s.w), num(s.r)); if (v && (!m[e.name] || v > m[e.name].v)) m[e.name] = { v, w:num(s.w), r:num(s.r), date:w.date }; }); }); });
+  Object.values(workouts).forEach(w => { if (w.type !== 'lift') return; w.exercises.forEach(e => { if (e.skipped) return; e.sets.forEach(s => { const v = e1rm(refW(e.name, e, num(s.w)), num(s.r)); if (v && (!m[e.name] || v > m[e.name].v)) m[e.name] = { v, w:num(s.w), r:num(s.r), date:w.date, machine:exMachine(e.name, e) }; }); }); });
   return m;
 }
 
@@ -1271,23 +1353,24 @@ function setsSummary(sets) {
 }
 function whenAgo(d, k) { const n = daysBetween(d, k); return n === 7 ? 'last week' : n === 1 ? 'yesterday' : n < 7 ? `on ${fromKey(d).toLocaleDateString('en-US', { weekday:'long' })}` : `on ${shortDate(d)}`; }
 function overload(rec, p, k) {
-  const [lo, hi] = range(p[3]);
+  const [lo, hi] = range(p[3]), U = rec.U || 'lb';
   const st = rec.status?.cls || 'calib';
+  if (rec.calib) return { cls:'hold', act:'Calibrate', text:rec.why, to:`? × ${rec.targets[0].r}` };
   if (!rec.last) return { cls:'hold', act:'Baseline', text:rec.why, to:`? × ${rec.targets[0].r}` };
-  if (rec.wave) return { cls:rec.status.cls === 'up' ? 'up' : 'build', act:rec.status.cls === 'up' ? `+${liftInc(sessionFor(k), p[0])} lb` : 'Waves', text:rec.why, to:rec.waveTo };
+  if (rec.wave) return { cls:rec.status.cls === 'up' ? 'up' : 'build', act:rec.status.cls === 'up' ? `+${rec.inc} ${U}` : 'Waves', text:rec.why, to:rec.waveTo };
   const W = Math.max(...rec.last.sets.map(s => num(s.w) || 0));
   const top = rec.last.sets.filter(s => (num(s.w) || 0) === W);
-  const at = W ? `${W} lb` : 'bodyweight';
-  const t0 = rec.targets[0], tw = t0.w ? `${t0.w} lb` : 'BW';
+  const at = W ? `${W} ${U}` : 'bodyweight';
+  const t0 = rec.targets[0], tw = t0.w ? `${t0.w} ${U}` : 'BW';
   const head = `${whenAgo(rec.last.date, k)[0].toUpperCase()}${whenAgo(rec.last.date, k).slice(1)} you hit ${setsSummary(top)} at ${at}.`;
   const reps = [...new Set(rec.targets.map(t => t.r))];
   const to = `${tw} × ${reps.length === 1 ? reps[0] : rec.targets.map(t => t.r).join('/')}`;
-  if (rec.fatigue === 'low') return { cls:'down', act:'−10% today', text:`${head} Low readiness today, so targets are 10% lighter (${t0.w ? t0.w + ' lb' : 'bodyweight'}). Your next session's targets ignore today.`, to };
-  if (rec.micro) return { cls:'up', act:'+0.5 lb', text:`${head} ${rec.why}`, to };
-  if (st === 'up') return { cls:'up', act:W ? `+${t0.w - W} lb` : '+1 rep', text:`${head} ${W ? `Try adding ${t0.w - W} lb: ${t0.w} lb for ${lo}+ reps.` : `Go for ${t0.r} reps, or add weight.`}`, to };
-  if (st === 'down') return { cls:'down', act:`−${W - t0.w} lb`, text:`${head} That's under ${lo} reps, so drop to ${t0.w} lb and own the range.`, to };
+  if (rec.fatigue === 'low') return { cls:'down', act:'−10% today', text:`${head} Low readiness today, so targets are 10% lighter (${t0.w ? t0.w + ' ' + U : 'bodyweight'}). Your next session's targets ignore today.`, to };
+  if (rec.micro) return { cls:'up', act:`+${rec.mc.micro} ${U}`, text:`${head} ${rec.why}`, to };
+  if (st === 'up') return { cls:'up', act:W ? `+${r2(t0.w - W)} ${U}` : '+1 rep', text:`${head} ${W ? `Try adding ${r2(t0.w - W)} ${U}: ${t0.w} ${U} for ${lo}+ reps.` : `Go for ${t0.r} reps, or add weight.`}`, to };
+  if (st === 'down') return { cls:'down', act:`−${r2(W - t0.w)} ${U}`, text:`${head} That's under ${lo} reps, so drop to ${t0.w} ${U} and own the range.`, to };
   if (st === 'calib') return { cls:'hold', act:'Hold', text:`${head} ${rec.why.replace(/^.*?lands/, `${at} lands`)}`, to };
-  return { cls:'build', act:'+1 rep', text:`${head} Keep ${at} and add a rep per set; at ${hi} on every set, add ${liftInc(sessionFor(k), p[0])} lb.`, to };
+  return { cls:'build', act:'+1 rep', text:`${head} Keep ${at} and add a rep per set; at ${hi} on every set, add ${rec.inc} ${U}.`, to };
 }
 
 // ═══ Rest timer ═════════════════════════════════════════════════════
@@ -1392,10 +1475,10 @@ function copySummary(b) {
   const k = keyOf(selected), id = `${k}_lift`, w = workouts[id];
   if (!w) return;
   const prs = sessionPRs({ ...w, type:'lift' });
-  const vol = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.reduce((b, s) => b + (num(s.w)||0)*(num(s.r)||0), 0)), 0);
+  const vol = w.exercises.reduce((a, ex) => a + exVol(ex), 0);
   const lines = [`${w.session} · ${longDate(k)}`, `Sets: ${w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.filter(s => num(s.r) > 0).length), 0)} · Volume: ${Math.round(vol).toLocaleString()} lb`];
   if (prs.length) lines.push('PRs: ' + prs.map(p => `${p.name} e1RM ${p.v} lb`).join(', '));
-  w.exercises.filter(e => !e.skipped).forEach(e => lines.push(`${e.name}: ${e.sets.filter(s => num(s.r) > 0).map(s => `${fmtW(s.w)}×${s.r}`).join(', ')}`));
+  w.exercises.filter(e => !e.skipped).forEach(e => lines.push(`${exLabel(e)}: ${liftSets(e)}`));
   navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
   b.textContent = 'Copied!';
 }
@@ -1408,7 +1491,7 @@ document.addEventListener('click', e => {
 function sessionSummaryHTML(w, type, k) {
   if (type !== 'lift') return '';
   const prs = sessionPRs({ ...w, type:'lift' });
-  const vol = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.reduce((b, s) => b + (num(s.w)||0)*(num(s.r)||0), 0)), 0);
+  const vol = w.exercises.reduce((a, ex) => a + exVol(ex), 0);
   const sets = w.exercises.reduce((a, ex) => a + (ex.skipped ? 0 : ex.sets.filter(s => num(s.r) > 0).length), 0);
   const session = w.session || sessionFor(fromKey(k));
   return `<div class="summary-card" id="sumCard">
@@ -1419,7 +1502,7 @@ function sessionSummaryHTML(w, type, k) {
       <div><div class="sum-val">${prs.length || '—'}</div><div class="sum-lbl">PRs</div></div>
     </div>
     ${prs.length ? `<div class="sum-prs">${prs.map(p => `<div class="sum-pr">🏆 ${esc(p.name)} · e1RM <b>${p.v} lb</b> <span class="note">(+${p.v - p.prev})</span></div>`).join('')}</div>` : ''}
-    <div class="sum-exs">${w.exercises.filter(e => !e.skipped).map(e => `<div class="sum-ex"><span>${esc(e.name)}</span><span>${e.sets.filter(s=>num(s.r)>0).map(s=>`${fmtW(s.w)}×${s.r}`).join(', ')}</span></div>`).join('')}</div>
+    <div class="sum-exs">${w.exercises.filter(e => !e.skipped).map(e => `<div class="sum-ex"><span>${esc(exLabel(e))}</span><span>${esc(liftSets(e))}</span></div>`).join('')}</div>
     <button class="mini sum-copy" data-act="sum-copy">Copy summary</button>
   </div><div class="sum-overlay" data-act="sum-close"></div>`;
 }
@@ -1472,7 +1555,7 @@ function supersetRest(i, j) {
   if (tab !== 'lift' || !partner || partner.skipped || ex.skipped) return false;
   const restOf = x => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); return restSecs(row ? row[4] : '2 min'); };
   const openSet = (x, after) => x.sets.findIndex((s, n) => n > after && !(num(s.r) > 0));
-  const target = (x, n) => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); const t = row && liftRec(x.name, row, session, k).targets[n]; return t ? (t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`) : ''; };
+  const target = (x, n) => { const row = liftRows(session, k)?.find(r => r[0] === x.planned); const rec = row && liftRec(x.name, row, session, k, x.machine), t = rec && rec.targets[n]; return t ? (t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' ' + rec.U : ''} × ${t.r}`) : ''; };
   const [first, second] = i < p ? [ex, partner] : [partner, ex];
   if (ex === first && j >= 0) {
     const n = openSet(second, -1);
@@ -1497,7 +1580,7 @@ function startRestFor(i, j) {
   let next;
   if (nj >= 0) {
     let tgt = '';
-    if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); if (p) { const t = liftRec(ex.name, p, session, k).targets[nj]; if (t) tgt = t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' lb' : ''} × ${t.r}`; } }
+    if (tab === 'lift') { const p = liftRows(session, k)?.find(r => r[0] === ex.planned); if (p) { const rec = liftRec(ex.name, p, session, k, ex.machine), t = rec.targets[nj]; if (t) tgt = t.w === null ? ` · ${t.r} reps` : ` · ${fmtW(t.w)}${t.w ? ' ' + rec.U : ''} × ${t.r}`; } }
     next = `Next: set ${nj + 1} of ${ex.sets.length}${tgt}`;
   } else {
     const nx = d.exercises.slice(i + 1).find(x => !x.skipped);
@@ -1544,7 +1627,7 @@ function render() {
 }
 function renderNow() { if (_renderRaf) { cancelAnimationFrame(_renderRaf); _renderRaf = null; } _doRender(); }
 function _doRender() {
-  _renderRaf = null;
+  _renderRaf = null; resetCal();
   const k = keyOf(selected);
   document.querySelectorAll('.tab').forEach(b => {
     const t = b.dataset.tab;
@@ -1669,42 +1752,91 @@ function pickOptions(type, i, ex, q) {
   return h;
 }
 
+// Machines this lift was logged on, most recent first (resolved ids, '' = not set).
+function machinesUsed(name) {
+  const last = {};
+  for (const w of Object.values(workouts)) if (w.type === 'lift' && !w.skipped) for (const e of w.exercises) if (e.name === name && !e.skipped) { const id = exMachine(name, e); if (!(id in last) || w.date > last[id]) last[id] = w.date; }
+  return Object.keys(last).sort((a, b) => last[b].localeCompare(last[a]));
+}
+let machEdit = null; // { i, mode:'add'|'cal' } while a machine form is open on lift card i
+function machineHTML(ex, i, rec) {
+  const reg = machineReg, b = reg.byExercise[ex.name] || {}, cal = rec.mc && calFor(ex.name), rid = rec.mc ? rec.mc.id : '';
+  const used = machinesUsed(ex.name), sel = rid;
+  const ids = [...used.filter(id => id && reg.machines[id]), ...Object.keys(reg.machines).filter(id => !used.includes(id)).sort((x, y) => reg.machines[x].name.localeCompare(reg.machines[y].name))];
+  const unitTxt = m => m && m.unit !== 'lb' ? ` · ${m.unit === 'kg' ? 'kg' : 'plates'}` : '';
+  const opts = (b.legacy ? '' : `<option value="" ${sel === '' ? 'selected' : ''}>Not set</option>`)
+    + ids.map(id => `<option value="${esc(id)}" ${sel === id ? 'selected' : ''}>${esc(reg.machines[id].name)}${unitTxt(reg.machines[id])}</option>`).join('')
+    + '<option value="__add">+ Add a machine…</option>';
+  const refName = cal && (machineName(cal.ref) || (cal.ref === '' ? 'your unlabeled sessions' : ''));
+  const f = cal && cal.k[rid], c = rec.mc && rec.mc.c, others = used.filter(id => id !== rid).length;
+  const info = !cal || cal.ref == null || (!others && f && f.src === 'ref') ? ''
+    : f && f.src === 'ref' ? 'Reference machine for this lift'
+    : f ? `1 ${rec.U} here ≈ ${r2(c)} lb on ${refName} (${f.src === 'manual' ? 'set by you' : `auto, ${f.n} switch${f.n === 1 ? '' : 'es'}`})`
+    : `New for this lift: today calibrates it against ${refName}`;
+  let form = '';
+  if (machEdit && machEdit.i === i && machEdit.mode === 'add') {
+    const legacyQ = !b.legacy && used.includes('') ? `<label class="mf-check"><input type="checkbox" id="mf-legacy"> Earlier ${esc(ex.name)} sessions without a machine were on this one</label>` : '';
+    form = `<div class="mach-form"><div class="mf-grid"><label>Name<input id="mf-name" type="text" maxlength="60" placeholder="e.g. Life Fitness cable" autocomplete="off"></label>
+      <label>Stack shows<select id="mf-unit"><option value="lb">Pounds (lb)</option><option value="kg">Kilograms (kg)</option><option value="plate">Plate numbers</option></select></label>
+      <label>Each plate (lb, optional)<input id="mf-plate" type="number" inputmode="decimal" min="0" step="0.5" placeholder="e.g. 10"></label>
+      <label>Smallest jump (optional)<input id="mf-step" type="number" inputmode="decimal" min="0" step="0.25" placeholder="e.g. 5"></label></div>${legacyQ}
+      <div class="mf-btns"><button class="mini primary" data-act="mach-add-save" data-i="${i}">Add machine</button><button class="mini" data-act="mach-cancel">Cancel</button></div></div>`;
+  } else if (machEdit && machEdit.i === i && machEdit.mode === 'cal') {
+    const isRef = f && f.src === 'ref';
+    const legacyQ = !b.legacy && used.includes('') && ids.length ? `<label>Earlier sessions without a machine were on<select id="mf-legacy-pick"><option value="">Not sure</option>${ids.map(id => `<option value="${esc(id)}">${esc(reg.machines[id].name)}</option>`).join('')}</select></label>` : '';
+    form = `<div class="mach-form">${isRef ? `<div class="note">This is the reference machine: loads on other machines are converted to it.</div>`
+      : `<label class="mf-factor">1 ${esc(rec.U)} here ≈ <input id="mf-k" type="number" inputmode="decimal" min="0" step="0.01" value="${c ? r2(c) : ''}" placeholder="?"> lb on ${esc(refName || 'the reference')}</label>
+        <div class="note">Tip: if 100 lb here feels like 80 lb on the reference, enter 0.8. Leave it to auto and it is worked out from your sets each time you switch machines.</div>`}
+      ${legacyQ}
+      <div class="mf-btns">${isRef ? '' : `<button class="mini primary" data-act="mach-cal-save" data-i="${i}">Save</button>${b.manual && b.manual[rid] ? `<button class="mini" data-act="mach-cal-clear" data-i="${i}">Back to auto</button>` : ''}<button class="mini" data-act="mach-ref" data-i="${i}">Make this the reference</button>`}${legacyQ ? `<button class="mini" data-act="mach-legacy" data-i="${i}">Save earlier sessions</button>` : ''}<button class="mini" data-act="mach-cancel">Close</button></div></div>`;
+  }
+  return `<div class="mach"><label class="mach-l">Machine<select data-act="machine" data-i="${i}" ${ex.skipped ? 'disabled' : ''} aria-label="Machine for ${esc(ex.name)}">${opts}</select></label>${info ? `<span class="mach-info">${esc(info)}</span>` : ''}${cal && (used.length > 1 || (used.length && rid !== used[0]) || !f || (b.manual && b.manual[rid])) || (b.legacy == null && used.includes('') && ids.length) ? `<button class="mini" data-act="mach-cal" data-i="${i}">Adjust</button>` : ''}</div>${form}`;
+}
+
 function liftRow(ex, i, session, k) {
   const p = liftRows(session, k).find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
-  const rec = liftRec(ex.name, p, session, k);
-  const targets = rec.targets.map((t, j) => `<span class="tgt"><b>S${j+1}</b>${t.w === null ? '? lb' : fmtW(t.w) + (t.w ? ' lb' : '')} × ${t.r}</span>`).join('');
-  const lastStr = rec.last ? `Last ${shortDate(rec.last.date)}: ${rec.last.sets.map(s => `${fmtW(num(s.w))}×${s.r}`).join(', ')} · best e1RM ${Math.max(...rec.last.sets.map(s => e1rm(num(s.w), s.r) || 0)) || '—'}` : '';
+  if (ex.machine === undefined) ex.machine = lastMachine(ex.name, k);
+  const rec = liftRec(ex.name, p, session, k, ex.machine), U = rec.U, c = rec.mc.c;
+  const targets = rec.targets.map((t, j) => `<span class="tgt"><b>S${j+1}</b>${t.w === null ? '? ' + U : fmtW(t.w) + (t.w ? ' ' + U : '')} × ${t.r}</span>`).join('');
+  const L = rec.last, onOther = L && L.machine !== rec.mc.id;
+  const lastStr = L ? `Last ${shortDate(L.date)}${onOther ? ` on ${machineName(L.machine) || 'an unlabeled machine'}` : ''}: ${liftSets({ name:ex.name, machine:L.machine }, L.raw)}${onOther && c ? ` (≈ ${L.sets.map(s => fmtW(num(s.w))).join('/')} ${U} here)` : ''} · best e1RM ${Math.max(...L.sets.map(s => e1rm(num(s.w), s.r) || 0)) || '—'}${c ? '' : ' lb'}` : '';
   const ov = overload(rec, p, k);
   const prior = bestBefore(ex.name, k);
+  const refE = s => c ? e1rm(c === 1 ? num(s.w) : num(s.w) * c, num(s.r)) : null;
   const topNow = Math.max(0, ...ex.sets.map(s => e1rm(num(s.w), num(s.r)) || 0));
-  const isPR = !!prior && !ex.skipped && topNow > prior.v;
+  const isPR = !!prior && !ex.skipped && Math.max(0, ...ex.sets.map(s => refE(s) || 0)) > prior.v;
   const rows = ex.sets.map((s, j) => {
     const t = rec.targets[j];
     const est = e1rm(num(s.w), num(s.r));
     return `<tr class="${num(s.r) > 0 ? 'done' : ''}">
       <td class="n">${j+1}</td>
-      <td><input id="lw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${t && t.w !== null ? t.w : 'lb'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} weight"></td>
+      <td><input id="lw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="${U === 'pl' ? 1 : 0.5}" min="0" placeholder="${t && t.w !== null ? t.w : U}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} weight"></td>
       <td><input id="lr-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="r" type="number" inputmode="numeric" min="0" placeholder="${t ? t.r : 'reps'}" value="${s.r ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} reps"></td>
-      <td class="e1" id="le-${i}-${j}">${est || '–'}${prior && est > prior.v && !ex.skipped ? '<span class="pr">PR</span>' : ''}</td></tr>`;
+      <td class="e1" id="le-${i}-${j}">${est || '–'}${prior && refE(s) > prior.v && !ex.skipped ? '<span class="pr">PR</span>' : ''}</td></tr>`;
   }).join('');
   const targetW = rec.targets[0]?.w;
-  const warmupHTML = targetW >= 45 ? (() => { const wu = warmupSets(targetW); return wu.length ? `<div class="warmup"><div class="warmup-title">Warm-up guide</div><div class="warmup-sets">${wu.map(s => `<span>${s.pct} → ${s.w} lb × ${s.r}</span>`).join('')}</div></div>` : ''; })() : '';
-  return `<div class="ex${ex.skipped ? ' skipped' : ''}${ex.superset !== null && ex.superset !== undefined ? ' ss-linked' : ''}" data-prior="${prior ? prior.v : ''}">
+  const warmupHTML = U === 'lb' && targetW >= 45 ? (() => { const wu = warmupSets(targetW); return wu.length ? `<div class="warmup"><div class="warmup-title">Warm-up guide</div><div class="warmup-sets">${wu.map(s => `<span>${s.pct} → ${s.w} lb × ${s.r}</span>`).join('')}</div></div>` : ''; })() : '';
+  const pm = prior && prior.machine !== rec.mc.id ? machineName(prior.machine) : '';
+  const prTxt = !prior ? 'No PR on record yet. Today sets the baseline.'
+    : !c ? `PR on record: e1RM ${prior.v} lb${pm ? ` on ${pm}` : ''}. PRs on this machine count from the session after it is calibrated.`
+    : `PR to beat: e1RM ${c === 1 ? prior.v : Math.round(prior.v / c)}${U === 'lb' ? '' : ' ' + U} (${fmtW(prior.w)}${prior.w ? ' ' + wUnit({ name:ex.name, machine:prior.machine }) : ''} × ${prior.r}${pm ? ` on ${pm}` : ''}, ${shortDate(prior.date)})`;
+  return `<div class="ex${ex.skipped ? ' skipped' : ''}${ex.superset !== null && ex.superset !== undefined ? ' ss-linked' : ''}" data-prior="${prior ? prior.v : ''}" data-c="${c ?? ''}">
     <div class="plan">
       <div class="ex-num">${String(i+1).padStart(2,'0')}</div>
       ${pickerHTML('lift', i, ex)}
       <div class="meta">${tag(p[1])}<span>${p[2]} × ${esc(p[3])}</span><button class="rest-btn" data-act="rest" data-i="${i}" title="Start rest timer">⏱ Rest ${esc(p[4])}</button></div>
-      <div class="rec"><div class="rec-head"><div class="rec-title">Target today</div>${rec.status ? `<span class="dp ${rec.status.cls}">${esc(rec.status.text)}</span>` : ''}</div><div class="targets">${targets}</div><div class="ovl ${ov.cls}"><b>${esc(ov.act)}</b><span>${esc(ov.text)}</span></div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}<div class="pr-best">${prior ? `PR to beat: e1RM ${prior.v} (${fmtW(prior.w)}${prior.w ? ' lb' : ''} × ${prior.r}, ${shortDate(prior.date)})` : 'No PR on record yet. Today sets the baseline.'}</div></div>
+      ${machineHTML(ex, i, rec)}
+      <div class="rec"><div class="rec-head"><div class="rec-title">Target today</div>${rec.status ? `<span class="dp ${rec.status.cls}">${esc(rec.status.text)}</span>` : ''}</div><div class="targets">${targets}</div><div class="ovl ${ov.cls}"><b>${esc(ov.act)}</b><span>${esc(ov.text)}</span></div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}<div class="pr-best">${esc(prTxt)}</div></div>
     </div>
     <div class="actual">
       <div class="act-top">
         <label class="switch"><input type="checkbox" data-act="skip" data-i="${i}" ${ex.skipped ? 'checked' : ''}><span>Skipped</span></label>
         <span class="pr" id="lpr-${i}" ${isPR ? '' : 'hidden'}>New PR${isPR ? ` · ${topNow}` : ''}</span>
         <button class="mini fill" data-act="fill" data-i="${i}" ${ex.skipped || rec.targets.every(t => t.w === null) ? 'disabled' : ''}>Fill targets</button>
-        <button class="mini" data-act="fill-last" data-i="${i}" ${ex.skipped || !rec.last ? 'disabled' : ''}>Last session</button>
+        <button class="mini" data-act="fill-last" data-i="${i}" ${ex.skipped || !rec.last || !c ? 'disabled' : ''}>Last session</button>
         <button class="mini" data-act="link-ss" data-i="${i}" title="Link as superset with next exercise">${ex.superset !== null && ex.superset !== undefined ? '🔗 Paired' : 'Superset'}</button>
       </div>
-      <table class="sets"><thead><tr><th>Set</th><th>Weight (lb)</th><th>Reps</th><th class="e1">e1RM</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="sets"><thead><tr><th>Set</th><th>Weight (${U})</th><th>Reps</th><th class="e1">e1RM</th></tr></thead><tbody>${rows}</tbody></table>
       ${warmupHTML}
       <div class="set-btns"><button class="mini" data-act="add" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>+ Set</button>${ex.sets.length > 1 ? `<button class="mini" data-act="rm" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>− Set</button>` : ''}</div>
     </div>
@@ -1726,9 +1858,9 @@ function prBanner(d) {
 function overloadPlan(d, session, k) {
   const rows = d.exercises.filter(ex => !ex.skipped).map(ex => {
     const p = liftRows(session, k).find(r => r[0] === ex.planned) || [ex.planned,'RIR 2','3','8–12','2 min'];
-    const rec = liftRec(ex.name, p, session, k), ov = overload(rec, p, k);
+    const rec = liftRec(ex.name, p, session, k, ex.machine), ov = overload(rec, p, k);
     const W = rec.last ? Math.max(...rec.last.sets.map(s => num(s.w) || 0)) : null;
-    const last = rec.last ? `${fmtW(W)}${W ? ' lb' : ''} · ${setsSummary(rec.last.sets.filter(s => (num(s.w) || 0) === W))}` : 'no history';
+    const last = rec.last ? `${fmtW(W)}${W ? ' ' + rec.U : ''} · ${setsSummary(rec.last.sets.filter(s => (num(s.w) || 0) === W))}` : 'no history';
     return { ex, ov, last };
   });
   if (!rows.length) return '';
@@ -1843,7 +1975,7 @@ function filteredWorkouts() {
 }
 function summaryOf(w) {
   if (w.type === 'lift') {
-    const vol = w.exercises.reduce((a, e) => a + (e.skipped ? 0 : e.sets.reduce((b, s) => b + (num(s.w) || 0) * (num(s.r) || 0), 0)), 0);
+    const vol = Math.round(w.exercises.reduce((a, e) => a + exVol(e), 0));
     const done = w.exercises.filter(e => !e.skipped && e.sets.some(s => num(s.r) > 0)).length;
     return `${done}/${w.exercises.length} exercises · ${vol.toLocaleString()} lb volume`;
   }
@@ -1859,13 +1991,13 @@ function detailTable(w) {
       <tbody><tr class="${e.skipped ? 'skip' : ''}"><td>${esc(e.planned)}</td><td>${esc(e.machine || '—')}</td><td class="m">${e.duration ?? '—'}</td><td class="m">${e.hr ?? '—'}</td><td class="m">${e.maxhr ?? '—'}</td><td class="m">${e.distance ?? '—'}</td><td class="m">${e.rounds ?? '—'}</td>${hx ? `<td class="m">${e.workSec != null || e.restSec != null ? hiitProto(e) : '—'}</td><td class="m">${e.avgWatts ?? '—'}</td><td class="m">${e.hrRec60 ?? '—'}</td>` : ''}<td>${esc(e.level || '—')}</td></tr></tbody></table>`;
   }
   const rows = w.exercises.map(e => {
-    const sets = e.skipped ? 'Skipped' : e.sets.filter(s => (w.type === 'lift' ? num(s.r) : num(s.v)) !== null)
-      .map(s => w.type === 'lift' ? `${fmtW(num(s.w))}×${s.r}` : `${s.v}${e.unit && e.unit !== 'reps' ? e.unit : ''}${num(s.w) ? '@' + s.w : ''}`).join(', ') || '—';
-    const best = w.type === 'lift' && !e.skipped ? Math.max(0, ...e.sets.map(s => e1rm(num(s.w), num(s.r)) || 0)) : 0;
+    const done = e.skipped ? [] : e.sets.filter(s => (w.type === 'lift' ? num(s.r) : num(s.v)) !== null);
+    const sets = e.skipped ? 'Skipped' : (w.type === 'lift' ? liftSets(e, done) : done.map(s => `${s.v}${e.unit && e.unit !== 'reps' ? e.unit : ''}${num(s.w) ? '@' + s.w : ''}`).join(', ')) || '—';
+    const best = w.type === 'lift' && !e.skipped ? Math.max(0, ...e.sets.map(s => e1rm(refW(e.name, e, num(s.w)), num(s.r)) || 0)) : 0;
     const prior = w.type === 'lift' && best ? bestBefore(e.name, w.date) : null;
-    return `<tr class="${e.skipped ? 'skip' : ''}"><td>${esc(e.name)}${e.name !== e.planned ? `<div class="last">for ${esc(e.planned)}</div>` : ''}</td><td class="m">${esc(sets)}</td>${w.type === 'lift' ? `<td class="m">${best || '—'}${prior && best > prior.v ? '<span class="pr">PR</span>' : ''}</td>` : ''}</tr>`;
+    return `<tr class="${e.skipped ? 'skip' : ''}"><td>${esc(w.type === 'lift' ? exLabel(e) : e.name)}${e.name !== e.planned ? `<div class="last">for ${esc(e.planned)}</div>` : ''}</td><td class="m">${esc(sets)}</td>${w.type === 'lift' ? `<td class="m">${best || '—'}${prior && best > prior.v ? '<span class="pr">PR</span>' : ''}</td>` : ''}</tr>`;
   }).join('');
-  return `<table class="htable"><thead><tr><th>Exercise</th><th>${w.type === 'lift' ? 'Sets (lb × reps)' : 'Sets'}</th>${w.type === 'lift' ? '<th>e1RM</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="htable"><thead><tr><th>Exercise</th><th>${w.type === 'lift' ? 'Sets (weight × reps)' : 'Sets'}</th>${w.type === 'lift' ? '<th>e1RM</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 function renderHistory() {
   const list = filteredWorkouts();
@@ -1899,22 +2031,24 @@ function renderHistory() {
 }
 
 // ═══ CSV ════════════════════════════════════════════════════════════
-const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight (lb)','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason'];
+const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason','Ref Weight (lb)','Ref Machine'];
 const cq = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const TYPE_ORDER = { lift:0, core:1, cardio:2 };
 function workoutRows(list) {
   const rows = [CSV_HEAD];
   for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date) || (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9))) {
-    if (w.skipped) { rows.push([w.date, w.session, TYPES[w.type], '(whole workout)', '', 'Yes', '', '', '', '', '', '', '', '', '', '', '', '', w.notes, '', '', '', '', '', '', '', 'Yes', w.skipReason || '']); continue; }
+    if (w.skipped) { rows.push([w.date, w.session, TYPES[w.type], '(whole workout)', '', 'Yes', '', '', '', '', '', '', '', '', '', '', '', '', w.notes, '', '', '', '', '', '', '', 'Yes', w.skipReason || '', '', '']); continue; }
     for (const e of w.exercises) {
       const base = [w.date, w.session, TYPES[w.type], e.name, e.planned, e.skipped ? 'Yes' : 'No'];
-      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60, '', '']);
+      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60, '', '', '', '']);
       else {
         const mg = w.type === 'lift' ? musclesOf(e.name).join(' / ') : 'Core';
         const prior = w.type === 'lift' && !e.skipped ? bestBefore(e.name, w.date) : null;
-        e.sets.forEach((s, j) => { const est = w.type === 'lift' ? e1rm(num(s.w), num(s.r)) : null; rows.push([...base, j + 1,
-          s.w, w.type === 'lift' ? s.r : '', w.type === 'core' ? s.v : '', w.type === 'core' ? e.unit : 'lb×reps',
-          '', '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '', '', '']); });
+        const lift = w.type === 'lift', mach = lift ? machineName(exMachine(e.name, e)) : '', ref = lift ? machineName(calFor(e.name).ref) : '';
+        e.sets.forEach((s, j) => { const rw = lift ? refW(e.name, e, num(s.w)) : null, est = lift ? e1rm(rw, num(s.r)) : null; rows.push([...base, j + 1,
+          s.w, lift ? s.r : '', w.type === 'core' ? s.v : '', w.type === 'core' ? e.unit : `${{ pl:'plate' }[wUnit(e)] || wUnit(e)}×reps`,
+          mach, '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '', '', '',
+          rw == null ? '' : Math.round(rw * 10) / 10, lift ? ref || (calFor(e.name).ref === '' ? '(not set)' : '') : '']); });
       }
     }
   }
@@ -1983,15 +2117,16 @@ main.addEventListener('input', e => {
 });
 function refreshPR(i, ex) {
   const card = document.getElementById(`lpr-${i}`)?.closest('.ex'); if (!card) return;
-  const prior = num(card.dataset.prior);
-  let top = 0;
+  const prior = num(card.dataset.prior), k = num(card.dataset.c);
+  let top = 0, topRef = 0;
   ex.sets.forEach((s, j) => {
-    const est = e1rm(num(s.w), num(s.r)); top = Math.max(top, est || 0);
+    const est = e1rm(num(s.w), num(s.r)), ref = k ? e1rm(k === 1 ? num(s.w) : num(s.w) * k, num(s.r)) : null;
+    top = Math.max(top, est || 0); topRef = Math.max(topRef, ref || 0);
     const c = document.getElementById(`le-${i}-${j}`);
-    if (c) c.innerHTML = (est || '–') + (prior && est > prior && !ex.skipped ? '<span class="pr">PR</span>' : '');
+    if (c) c.innerHTML = (est || '–') + (prior && ref > prior && !ex.skipped ? '<span class="pr">PR</span>' : '');
   });
   const b = document.getElementById(`lpr-${i}`);
-  const on = !!prior && !ex.skipped && top > prior;
+  const on = !!prior && !ex.skipped && topRef > prior;
   b.hidden = !on; if (on) b.textContent = `New PR · ${top}`;
 }
 main.addEventListener('change', e => {
@@ -2012,7 +2147,53 @@ main.addEventListener('change', e => {
     openPicker = null; renderCalendar(); renderNow();
   } else if (act === 'hf') { hf[t.dataset.f] = t.value; refreshHistoryList(); }
   else if (act === 'cf' && t.tagName === 'SELECT') { curDraft().exercises[0].machine = t.value; touch(); }
+  else if (act === 'machine') {
+    const i = +t.dataset.i, ex = curDraft().exercises[i];
+    if (t.value === '__add') { machEdit = { i, mode:'add' }; renderNow(); document.getElementById('mf-name')?.focus({ preventScroll:true }); return; }
+    ex.machine = t.value; machEdit = null; touch(); renderNow();
+  }
 });
+// The machine registry is one synced document (config/machines); every change is saved whole.
+function saveMachines() {
+  machineReg = MachineLib.normalize(machineReg); resetCal();
+  lsSet(MACH_LS, machineReg);
+  if (db) db.doc('config/machines').set(machineReg).catch(() => {});
+  sheetsPublishSoon();
+}
+const exCfg = name => machineReg.byExercise[name] || (machineReg.byExercise[name] = { legacy:null, ref:null, manual:{} });
+function setLegacy(name, id) {
+  const b = exCfg(name); b.legacy = id;
+  if (b.ref === '') b.ref = id;
+  if (b.manual && '' in b.manual) delete b.manual[''];
+}
+function machineAction(act, i) {
+  if (act === 'mach-cancel') { machEdit = null; renderNow(); return; }
+  const ex = curDraft().exercises[i]; if (!ex) return;
+  const val = id => document.getElementById(id)?.value ?? '';
+  if (act === 'mach-cal') { machEdit = machEdit && machEdit.i === i && machEdit.mode === 'cal' ? null : { i, mode:'cal' }; }
+  else if (act === 'mach-add-save') {
+    const name = val('mf-name').trim();
+    if (!name) { document.getElementById('mf-name')?.focus(); return; }
+    const dup = Object.entries(machineReg.machines).find(([, m]) => m.name.toLowerCase() === name.toLowerCase());
+    const id = dup ? dup[0] : MachineLib.newId(machineReg, name);
+    if (!dup) machineReg.machines[id] = { name, unit:val('mf-unit') || 'lb', plateLb:num(val('mf-plate')), step:num(val('mf-step')) };
+    if (document.getElementById('mf-legacy')?.checked) setLegacy(ex.name, id);
+    ex.machine = id; machEdit = null; saveMachines(); touch();
+  } else if (act === 'mach-cal-save') {
+    const c = num(val('mf-k')), mc = machineCtx(ex.name, ex.machine);
+    if (!(c > 0)) { document.getElementById('mf-k')?.focus(); return; }
+    exCfg(ex.name).manual[mc.id] = c / MachineLib.unitLb(mc.m);
+    machEdit = null; saveMachines();
+  } else if (act === 'mach-cal-clear') {
+    const mc = machineCtx(ex.name, ex.machine); delete exCfg(ex.name).manual[mc.id]; machEdit = null; saveMachines();
+  } else if (act === 'mach-ref') {
+    const mc = machineCtx(ex.name, ex.machine), b = exCfg(ex.name); b.ref = mc.id; delete b.manual[mc.id]; machEdit = null; saveMachines();
+  } else if (act === 'mach-legacy') {
+    const id = val('mf-legacy-pick'); if (!id) return;
+    setLegacy(ex.name, id); machEdit = null; saveMachines();
+  }
+  renderNow();
+}
 main.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, i = +b.dataset.i;
@@ -2034,8 +2215,9 @@ main.addEventListener('click', async e => {
     return;
   }
   if (act === 'rest') { startRestFor(i, -1); return; }
+  if (act && act.startsWith('mach-')) { machineAction(act, i); return; }
   if (act === 'pick') {
-    const ex = curDraft().exercises[i]; ex.name = b.dataset.name;
+    const ex = curDraft().exercises[i]; if (ex.name !== b.dataset.name) delete ex.machine; ex.name = b.dataset.name;
     const session = sessionFor(keyOf(selected));
     if (session && ex.planned && ex.name !== ex.planned) {
       swapMemory[`${session}:${ex.planned}`] = ex.name;
@@ -2045,13 +2227,13 @@ main.addEventListener('click', async e => {
   }
   if (act === 'fill') {
     const k = keyOf(selected), session = sessionFor(k), ex = curDraft().exercises[i];
-    if (tab === 'lift') { const p = liftRows(session, k).find(r => r[0] === ex.planned); const rec = liftRec(ex.name, p, session, k); ex.sets = rec.targets.map(t => ({ w:t.w, r:t.r })); }
+    if (tab === 'lift') { const p = liftRows(session, k).find(r => r[0] === ex.planned); const rec = liftRec(ex.name, p, session, k, ex.machine); ex.sets = rec.targets.map(t => ({ w:t.w, r:t.r })); }
     else { const p = coreRows(session, k).find(r => r[0] === ex.planned); const rec = coreRec(ex.name, p, k); ex.sets = rec.targets.map(t => ({ v:t.v, w:t.w })); }
     touch(); renderNow(); return;
   }
   if (act === 'fill-last') {
     const k = keyOf(selected), ex = curDraft().exercises[i];
-    const last = lastLift(ex.name, k);
+    const last = liftHistory(ex.name, k, 1, machineCtx(ex.name, ex.machine))[0];
     if (last) { ex.sets = last.sets.map(s => ({ w:s.w, r:s.r })); touch(); renderNow(); }
     return;
   }
@@ -2512,7 +2694,7 @@ function liftSeries(lo, hi = '9999-12-31') {
   Object.values(workouts).filter(w => w.type === 'lift' && w.date >= lo && w.date <= hi).sort((a, b) => a.date.localeCompare(b.date)).forEach(w => w.exercises.forEach(e => {
     if (e.skipped) return;
     let best = null;
-    e.sets.forEach(s => { const v = e1rm(num(s.w), num(s.r)); if (v && (!best || v > best.v)) best = { v, w:num(s.w), r:num(s.r) }; });
+    e.sets.forEach(s => { const rw = refW(e.name, e, num(s.w)), v = e1rm(rw, num(s.r)); if (v && (!best || v > best.v)) best = { v, w:Math.round(rw * 10) / 10, r:num(s.r) }; });
     if (best) (m[e.name] ||= []).push({ date:w.date, ...best });
   }));
   return m;
@@ -2586,7 +2768,7 @@ function renderProgress() {
   const lifts = Object.values(workouts).filter(w => w.type === 'lift' && !w.skipped && w.date >= lo && w.date <= hi);
   h += `<div class="sec-title" style="--sc:var(--push)">Lifting</div>`;
   const keyTiles = KEY_LIFTS.filter(n => ls[n]).slice(0, 5).map(n => { const s = ls[n], a = s[0], b = s[s.length - 1]; return tile(n.replace('Barbell ', '').replace('Conventional ', ''), `${b.v} lb`, s.length > 1 ? `${sgn(b.v - a.v, 0)} lb e1RM` : `e1RM · ${shortDate(b.date)}`, trendCls(s.length > 1 ? b.v - a.v : null)); }).join('');
-  const vol = lifts.reduce((a, w) => a + w.exercises.reduce((b, e) => b + (e.skipped ? 0 : e.sets.reduce((c, s) => c + (num(s.w) || 0) * (num(s.r) || 0), 0)), 0), 0);
+  const vol = lifts.reduce((a, w) => a + w.exercises.reduce((b, e) => b + exVol(e), 0), 0);
   h += `<div class="card tiles"><div class="kv">${tile('Sessions', lifts.length, 'in range')}${tile('Volume', `${Math.round(vol).toLocaleString()} lb`, 'weight × reps')}${keyTiles}</div></div>`;
   h += `<div class="charts">`;
   const sel = ls[pr.ex] || [];
@@ -2598,7 +2780,7 @@ function renderProgress() {
       { label:'Top set lb', data:sel.map(p => p.w), borderColor:t.fg3, backgroundColor:t.fg3, borderDash:[4, 4], pointRadius:2.5, tension:.2 },
     ] }, options:{ ...copts(t), plugins:{ ...copts(t).plugins, tooltip:{ ...copts(t).plugins.tooltip, callbacks:{ afterBody:items => { const p = sel[items[0].dataIndex]; return p ? `Best set: ${p.w} lb × ${p.r}` : ''; } } } } } })]);
   const weeksL = lifts.length ? weekRange(lifts.map(w => w.date).sort()[0], today) : [];
-  const wv = g => weeksL.map(wk => Math.round(lifts.filter(w => mondayOf(w.date) === wk && (w.session || '').startsWith(g)).reduce((a, w) => a + w.exercises.reduce((b, e) => b + (e.skipped ? 0 : e.sets.reduce((c, s) => c + (num(s.w) || 0) * (num(s.r) || 0), 0)), 0), 0)));
+  const wv = g => weeksL.map(wk => Math.round(lifts.filter(w => mondayOf(w.date) === wk && (w.session || '').startsWith(g)).reduce((a, w) => a + w.exercises.reduce((b, e) => b + exVol(e), 0), 0)));
   h += chartCard('chVol', 'Weekly volume', 'Pounds moved (weight × reps) by session type', lifts.length > 0, 'No lifting sessions in this range.', t => ({
     type:'bar', data:{ labels:weeksL.map(w => 'Wk ' + shortDate(w)), datasets:[
       { label:'Push', data:wv('PUSH'), backgroundColor:t.push }, { label:'Pull', data:wv('PULL'), backgroundColor:t.pull }, { label:'Legs', data:wv('LEGS'), backgroundColor:t.legs },
@@ -2863,6 +3045,7 @@ function subscribeNew() {
   sub('body', () => bodyLog, m => { bodyLog = m; }, LS2.body);
   sub('meals', () => mealLog, m => { mealLog = m; }, LS2.meals);
   sub('foods', () => foods, m => { foods = m; }, LS2.foods);
+  db.doc('config/machines').onSnapshot(s => { if (s.exists) { machineReg = MachineLib.normalize(s.data()); lsSet(MACH_LS, machineReg); resetCal(); afterSnap(); } }, () => {});
   db.doc('config/plan').onSnapshot(s => { if (s.exists) { plan = s.data(); lsSet(LS2.plan, plan); afterSnap(); } }, () => {});
   // config/program: use it when it exists and validates. When the store has none after a real sync, seed it from the built-in program.
   let seeded = false;
@@ -3053,9 +3236,28 @@ function mealPlanRows() {
   Object.entries(foods || {}).sort().forEach(([id, f]) => add({ Area:'Food (per 100 g)', Item:f.name, 'Food ID':id, kcal:f.kcal, 'Protein (g)':f.p, 'Fat (g)':f.f, 'Carbs (g)':f.c }));
   return rows;
 }
+// One row per exercise and machine it was logged on, with the factor that converts that machine's numbers to reference pounds,
+// then any registered machine not used yet. The training agent reads this to compare loads across machines.
+function machineRows() {
+  const rows = [['Exercise', 'Machine', 'Machine ID', 'Unit', 'Plate (lb)', 'Step', 'Ref lb per unit', 'Calibration', 'Switches', 'Reference Machine', 'Sessions', 'Last Used']];
+  const seen = new Set(), use = {};
+  for (const w of Object.values(workouts)) if (w.type === 'lift' && !w.skipped) for (const e of w.exercises) {
+    if (e.skipped || !e.sets.some(s => num(s.r) > 0)) continue;
+    const key = `${e.name}\u0000${exMachine(e.name, e)}`, u = use[key] || (use[key] = { name:e.name, id:exMachine(e.name, e), n:0, last:'' });
+    u.n++; if (w.date > u.last) u.last = w.date;
+  }
+  Object.values(use).sort((a, b) => a.name.localeCompare(b.name) || b.last.localeCompare(a.last)).forEach(u => {
+    const cal = calFor(u.name), f = cal.k[u.id], m = MachineLib.get(machineReg, u.id); seen.add(u.id);
+    rows.push([u.name, machineName(u.id) || '(not set)', u.id, m ? m.unit : 'lb', m && m.plateLb || '', MachineLib.step(m), f ? Math.round(f.k * MachineLib.unitLb(m) * 1000) / 1000 : '',
+      f ? { ref:'reference', manual:'manual', auto:'auto' }[f.src] : 'uncalibrated', f && f.src === 'auto' ? f.n : '', cal.ref == null ? '' : machineName(cal.ref) || '(not set)', u.n, u.last]);
+  });
+  Object.entries(machineReg.machines).filter(([id]) => !seen.has(id)).forEach(([id, m]) => rows.push(['', m.name, id, m.unit, m.plateLb || '', MachineLib.step(m), '', 'not used yet', '', '', 0, '']));
+  return rows;
+}
 function sheetTables() {
+  resetCal();
   const pad = rows => rows.map(r => r.length >= rows[0].length ? r : [...r, ...Array(rows[0].length - r.length).fill('')]);
-  return { Workouts: pad(workoutRows(Object.values(workouts))), Body: bodyRows(), Meals: mealRows(), Fatigue: fatigueRows(), Program: programRows(), 'Meal Plan': mealPlanRows() };
+  return { Workouts: pad(workoutRows(Object.values(workouts))), Body: bodyRows(), Meals: mealRows(), Fatigue: fatigueRows(), Program: programRows(), 'Meal Plan': mealPlanRows(), Machines: machineRows() };
 }
 const sheetsPublishSoon = () => { try { window.SheetsSync?.schedule(); } catch {} };
 const sheetsOn = () => !!(window.SheetsSync && window.PlanProposal && !window.claude?.use);

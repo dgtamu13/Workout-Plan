@@ -20,6 +20,7 @@ const ctx = {
   localStorage: { getItem: k => (k in ls ? ls[k] : null), setItem: (k, v) => { ls[k] = String(v); } },
   location: { hash: '' },
   ProgramLib: require('../docs/program.js'),
+  MachineLib: require('../docs/machines.js'),
 };
 vm.createContext(ctx);
 vm.runInContext(`
@@ -28,7 +29,7 @@ const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);
 ${code}
 `, ctx);
 // Round-trip through JSON so arrays from the VM compare equal to local ones.
-const run = src => { const v = vm.runInContext(src, ctx); return v === undefined ? v : JSON.parse(JSON.stringify(v)); };
+const run = src => { vm.runInContext('resetCal()', ctx); const v = vm.runInContext(src, ctx); return v === undefined ? v : JSON.parse(JSON.stringify(v)); };
 const J = v => JSON.stringify(v);
 
 let passed = 0, failed = 0;
@@ -88,7 +89,7 @@ check('Every 5th week (5 / 10 / 15 / 20 / 25) is a deload with the exact date ra
 
 check('The program starts on its real Day 1: Sat 2026-10-24 is PUSH A, Week 1, Phase 1', () => {
   assert.ok(/const START = new Date\(2026, 9, 24\)/.test(html), 'START in index.html');
-  const c2 = { console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp, localStorage: ctx.localStorage, location: { hash: '' }, ProgramLib: ctx.ProgramLib };
+  const c2 = { console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp, localStorage: ctx.localStorage, location: { hash: '' }, ProgramLib: ctx.ProgramLib, MachineLib: ctx.MachineLib };
   vm.createContext(c2);
   vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-10-24'), before: programInfo('2026-10-23'), next: programInfo('2026-10-25'), rest: programInfo('2026-10-30'), week2: programInfo('2026-10-31'), end: programEnd(), sched: [...deloadWeeks()] };`, c2);
   const o = JSON.parse(JSON.stringify(c2.out));
@@ -214,8 +215,8 @@ check('All targets stay on 0.5 lb steps', () => {
   clearLogs(); logLift('2026-10-28', ROW[0], sets(135.5, [8, 8, 8, 8]));
   rec(ROW[0], ROW, 'PULL B', '2026-11-04').targets.forEach(t => assert.strictEqual((t.w * 2) % 1, 0));
 });
-check('Weight inputs accept 0.5 lb steps', () => {
-  assert.ok(!/id="lw-[^>]*step="2\.5"/.test(html) && /id="lw-[^>]*step="0\.5"/.test(html));
+check('Weight inputs accept 0.5 steps (whole plates on plate-number stacks)', () => {
+  assert.ok(!/id="lw-[^>]*step="2\.5"/.test(html) && html.includes(`id="lw-\${i}-\${j}" data-act="set" data-i="\${i}" data-j="\${j}" data-f="w" type="number" inputmode="decimal" step="\${U === 'pl' ? 1 : 0.5}"`));
   assert.ok(!/id="cw-[^>]*step="2\.5"/.test(html) && /id="cw-[^>]*step="0\.5"/.test(html));
 });
 check('First session: hypertrophy aims for ~3–4 RIR; strength a clean 5 at ~2 RIR; old bests are rebuild targets', () => {
@@ -390,7 +391,7 @@ check('Old or incomplete records still group (unknown machine or protocol shows 
   assert.deepStrictEqual(s.points.map(p => p.label), ['Unknown machine · ?:?', 'Rower · 30:30']); assert.strictEqual(s.resets.length, 1);
 });
 check('CSV: the four new columns are appended after the existing ones with the exact names', () => {
-  assert.ok(/'PR','Work \(s\)','Rest \(s\)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason'\];/.test(html), 'CSV_HEAD ends with the four new columns');
+  assert.ok(/'PR','Work \(s\)','Rest \(s\)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason','Ref Weight \(lb\)','Ref Machine'\];/.test(html), 'CSV_HEAD ends with the four new columns');
   assert.ok(/'Muscle Group','e1RM \(lb\)','PR'/.test(html), 'existing columns unchanged');
 });
 

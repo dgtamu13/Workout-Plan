@@ -11,6 +11,7 @@ Source of the app is a single page: [`docs/index.html`](docs/index.html).
 | `docs/manifest.webmanifest` | PWA manifest (standalone, dark theme, icons) |
 | `docs/drive-sync.js` | Syncs your data to a private file in your own Google Drive |
 | `docs/program.js` | The built-in lifting program, its validation, and conversion to the rows the app renders |
+| `docs/machines.js` | Machine registry, units (lb, kg, plate numbers) and the calibration that converts loads between machines |
 | `docs/sheets-sync.js` | Publishes to a Google Sheet and reads the training agent's plan |
 | `docs/plan-proposal.js` | Validates, diffs and applies the agent's `next-week-plan.json` |
 | `PROGRAM_SCHEMA.md`, `PLAN_SCHEMA.md` | The `config/program` and `next-week-plan.json` formats, with full examples |
@@ -62,7 +63,9 @@ The training agent writes the plan JSON into the Sheet's `Plan` tab (or `next-we
 
 On Lifting, Core and Cardio, every section collapses: the phase banner, the overload plan, and each exercise (its header keeps the name, plan and sets logged, for example "Incline DB Press · 4 × 10–15 · 2/4 sets"). Tap a header to fold it, or use **Collapse all / Expand all**.
 
-The **Skip today's lifting / core / cardio** switch at the top of the day logs the whole workout as skipped, with an optional reason (rest, sick or injured, travel, no time, no equipment, other). It shows in History with a Skipped badge and in the Sheet and CSV as `Workout Skipped` = Yes plus the reason; it does not count toward the streak, consistency or progression. Turning the switch off removes the skip so you can do the workout after all. Folds do not re-render the page, so typing and scroll position are left alone, and the closed ones are remembered on the device.
+The **Skip today's lifting / core / cardio** switch at the top of the day logs the whole workout as skipped, with an optional reason (rest, sick or injured, travel, no time, no equipment, other). It shows in History with a Skipped badge and in the Sheet and CSV as `Workout Skipped` = Yes plus the reason; it does not count toward the streak, consistency or progression. Turning the switch off removes the skip so you can do the workout after all.
+
+Each lift has a **Machine** picker under its plan. Machines are shared across exercises (add one with **+ Add a machine…**: name, whether the stack shows pounds, kilograms or plate numbers, optionally the weight of one plate and the smallest jump). The weight you type is the number on that machine. The first machine an exercise is logged on (or its earlier unlabeled sessions) is its reference; the first session on a different machine is a calibration session (targets show "? lb", you pick a working weight at the planned RIR), and from then on targets, last-session numbers, e1RM and PRs are converted between machines, so a switch never looks like a PR or a stall. The factor is worked out from the sessions either side of each switch (median of the last five), and **Adjust** lets you type your own ("1 lb here ≈ 0.8 lb on Precor"), go back to auto, make a machine the reference, or say which machine earlier unlabeled sessions were on. The registry syncs as `config/machines`, and the Sheet gets a `Machines` tab plus `Machine`, `Unit`, `Ref Weight (lb)` and `Ref Machine` on every lift row. Folds do not re-render the page, so typing and scroll position are left alone, and the closed ones are remembered on the device.
 
 ## Data
 

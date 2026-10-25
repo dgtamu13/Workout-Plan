@@ -90,7 +90,8 @@ The agent reads the "Training Calendar" Sheet in the "Training Calendar Data" fo
 
 | Tab | Use |
 |---|---|
-| `Workouts` | Sets, weights, reps, cardio fields (stalls, double progression, HIIT output). |
+| `Workouts` | Sets, weights, reps, cardio fields (stalls, double progression, HIIT output). For lifts, `Weight` is the number read off the machine in its own unit (`Unit` = `lb×reps`, `kg×reps` or `plate×reps`), `Machine` names it, and `Ref Weight (lb)` is the same load converted to the exercise's reference machine (`Ref Machine`). `e1RM (lb)` is in reference pounds. |
+| `Machines` | One row per exercise and machine it was logged on: unit, plate weight, `Ref lb per unit` (the conversion factor), how it was calibrated (`reference`, `manual`, `auto` from N switches, or `uncalibrated`), the reference machine, sessions and last use. |
 | `Body` | Bodyweight for the 7-day average. |
 | `Meals` | What was eaten against the targets. |
 | `Fatigue` | Readiness check-ins for the pull-forward rule. |
@@ -141,7 +142,7 @@ These stay with the agent:
 
 0. Find today's entries: `Workouts` rows dated today (sets, the `Notes` column and the `Machine` column), today's `Fatigue` check-in, and today's `Body` weigh-in. If nothing was logged today (a rest day, or nothing submitted yet), make no plan and write no note.
    - A row with `Workout Skipped` = Yes means the whole workout was skipped on purpose (`Skip Reason` says why). It is not a performed session: it never counts toward a stall or double progression, and a reason such as "Sick or injured" is a readiness signal.
-   - Read the notes. They say what was different: pain, fatigue, time pressure, and especially **which machine or cable stack was used**. The same exercise on a different machine (for example a Precor cable stack for the baseline lateral raises, a Life Fitness one today) is not comparable pound for pound. Until the app records machines for lifts, compare loads only between sessions on the same machine, and say in the changeLog evidence when a session was on a different machine.
+   - Read the notes. They say what was different: pain, fatigue, time pressure, and especially **which machine or cable stack was used**. The same exercise on a different machine (for example a Precor cable stack for the baseline lateral raises, a Life Fitness one today) is not comparable pound for pound. The app records the machine for every lift and converts loads to the exercise's reference machine: compare loads using `Ref Weight (lb)` and `e1RM (lb)`, never the raw `Weight` across machines. A row whose machine is `uncalibrated` in the `Machines` tab, or the first session on a new machine (a calibration session), is not evidence of progress or a stall. If the notes name a machine that differs from the `Machine` column, trust the column for the numbers and mention the mismatch in the note. `targetLb` is always in reference-machine pounds; the app converts it to whatever machine is used that day.
 1. Read the Sheet tabs. Note the last calorie change and lockout end, and the program's Day 1 date (`Program` tab, `Meta` row "start date (Day 1, PUSH A)"). Set the plan's `weekStart` to tomorrow: the first day the changes apply. Changes to an exercise take effect the next time its session comes round.
 2. Check deload triggers (readiness and missed rep targets). If both fire, write `deload` and its `changeLog` entry.
 3. For each lifting exercise: double progression -> `targetLb`; 3-session stall -> a swap.
