@@ -13,7 +13,7 @@ const script = html.match(/<script>\n(\/\/ ═══ Program[\s\S]*?)<\/script>/
 const realCode = script.slice(0, script.indexOf('// ═══ Muscle groups'));
 // These tests use a fixed calendar (Day 1 = Tue 2026-10-20) so they do not move when the program's real start date does.
 // The real START is checked separately (see "The program starts on its real Day 1").
-const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);');
+const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);').replace(/const REST_DAYS = \[[^\]]*\];/, 'const REST_DAYS = [];');
 const golden = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'program-golden.json'), 'utf8'));
 const muscles = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'muscle-groups-golden.json'), 'utf8'));
 const clone = o => JSON.parse(JSON.stringify(o));

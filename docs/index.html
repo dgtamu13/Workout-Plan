@@ -647,6 +647,8 @@ body.resting .main { padding-bottom:120px; }
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
 const START = new Date(2026, 9, 24); // Day 1 (PUSH A): Sat Oct 24, 2026
+// Extra rest days taken since Day 1 (sorted). Each one is a REST day and pushes the rest of the program one day later.
+const REST_DAYS = ['2026-10-25'];
 const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
@@ -782,10 +784,14 @@ const MILESTONES = [
   { 'Barbell Bench Press':220, 'Back Squat':285, 'Conventional Deadlift':405, 'Standing OHP':125 },
 ];
 const isStrength = session => /\bB$/.test(session || '');
-const dayIndex = k => Math.round((fromKey(k) - START) / 86400000);
+// Program day number (0 = Day 1) of a date, not counting the extra rest days before it.
+const dayIndex = k => Math.round((fromKey(k) - START) / 86400000) - REST_DAYS.filter(r => r < k).length;
+// The calendar date of program day i (inverse of dayIndex), skipping the extra rest days.
+function dateOfDay(i) { let k = addDays(keyOf(START), i); for (const r of REST_DAYS) if (r <= k) k = addDays(k, 1); return k; }
 // status: 'not-started' | 'active' | 'complete'. Outside the program, session is null and phase falls back to the nearest one.
 function programInfo(k) {
   const d = dayIndex(k);
+  if (REST_DAYS.includes(k) && d >= 0) return { ...programInfo(dateOfDay(Math.max(0, d - 1))), session:'REST' };
   if (d < 0) return { status:'not-started', week:0, day:0, session:null, phase:PHASES[0], deload:false };
   const week = Math.floor(d / 7) + 1;
   if (week > PROGRAM_WEEKS) return { status:'complete', week, day:(d % 7) + 1, session:null, phase:PHASES[PHASES.length - 1], deload:false };
@@ -836,7 +842,7 @@ function phaseBanner(k, type = 'lift') {
   const i = programInfo(k);
   if (i.status !== 'active') return '';
   const ph = i.phase;
-  const dlDates = w => { const a = addDays(keyOf(START), (w - 1) * 7); return `${shortDate(a)} to ${shortDate(addDays(a, 6))}`; };
+  const dlDates = w => `${shortDate(dateOfDay((w - 1) * 7))} to ${shortDate(dateOfDay((w - 1) * 7 + 6))}`;
   const upcoming = [...deloadWeeks()].sort((a, b) => a - b).find(w => w >= i.week);
   const title = `Week ${i.week} of ${PROGRAM_WEEKS} · Phase ${ph.n} ${ph.name}${i.deload ? ' · Deload week' : ''}`;
   const body = type === 'core' ? CORE_COPY : type === 'cardio' ? CARDIO_COPY[ph.n] : `${PHASE_COPY[ph.n]} Intensity: hypertrophy ${ph.hyp}, strength ${ph.str}.`;
@@ -844,7 +850,7 @@ function phaseBanner(k, type = 'lift') {
   const key = `phase:${type}`, closed = isFolded(key);
   return `<div class="phase${i.deload ? ' deload' : ''}${closed ? ' collapsed' : ''}" data-fold="${key}"><b data-act="fold" role="button" tabindex="0" aria-expanded="${!closed}">${esc(title)}<i class="fold-c" aria-hidden="true">▾</i></b><span>${esc(text)}</span></div>`;
 }
-const programEnd = () => addDays(keyOf(START), PROGRAM_WEEKS * 7 - 1);
+const programEnd = () => dateOfDay(PROGRAM_WEEKS * 7 - 1);
 function plannedSession(date) {
   return programInfo(keyOf(new Date(date.getFullYear(), date.getMonth(), date.getDate()))).session;
 }
@@ -3229,7 +3235,7 @@ const PROGRAM_COLS = ['Area', 'Session', 'Order', 'Name', 'Muscle Group', 'Patte
 function programRows() {
   const rows = [PROGRAM_COLS], add = o => rows.push(PROGRAM_COLS.map(c => o[c] ?? ''));
   const p = PROGRAM, rest = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
-  add({ Area:'Meta', Name:'start date (Day 1, PUSH A)', 'Cue / Target':keyOf(START) }); add({ Area:'Meta', Name:'weeks', 'Cue / Target':`${PROGRAM_WEEKS} program weeks of 7 days from Day 1; the last day is ${programEnd()}` });
+  add({ Area:'Meta', Name:'start date (Day 1, PUSH A)', 'Cue / Target':keyOf(START) }); add({ Area:'Meta', Name:'rest days inserted (everything after shifts a day later)', 'Cue / Target':REST_DAYS.join(', ') }); add({ Area:'Meta', Name:'weeks', 'Cue / Target':`${PROGRAM_WEEKS} program weeks of 7 training days from Day 1 (the inserted rest days do not count); the last day is ${programEnd()}` });
   add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
   add({ Area:'Meta', Name:'deloadWeeks (pull-forward)', 'Cue / Target':(p.deloadWeeks || []).join(', ') });
   add({ Area:'Meta', Name:'scheduled deload weeks', 'Cue / Target':[...deloadWeeks()].sort((a, b) => a - b).join(', ') });

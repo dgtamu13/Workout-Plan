@@ -12,7 +12,7 @@ const script = html.match(/<script>\n(\/\/ ═══ Program[\s\S]*?)<\/script>/
 const realCode = script.slice(0, script.indexOf('// ═══ Muscle groups'));
 // These tests use a fixed calendar (Day 1 = Tue 2026-10-20) so they do not move when the program's real start date does.
 // The real START is checked separately (see "The program starts on its real Day 1").
-const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);');
+const code = realCode.replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);').replace(/const REST_DAYS = \[[^\]]*\];/, 'const REST_DAYS = [];');
 
 const ls = {};
 const ctx = {
@@ -87,16 +87,34 @@ check('Every 5th week (5 / 10 / 15 / 20 / 25) is a deload with the exact date ra
   for (const [w, [a, b]] of Object.entries(DL)) { assert.strictEqual(seen[w][0], a); assert.strictEqual(seen[w][seen[w].length - 1], b); assert.strictEqual(seen[w].length, 7); }
 });
 
-check('The program starts on its real Day 1: Sat 2026-10-24 is PUSH A, Week 1, Phase 1', () => {
+check('The program starts on its real Day 1 (Sat 2026-10-24, PUSH A) and the rest day on 2026-10-25 shifts everything after it a day', () => {
   assert.ok(/const START = new Date\(2026, 9, 24\)/.test(html), 'START in index.html');
   const c2 = { console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp, localStorage: ctx.localStorage, location: { hash: '' }, ProgramLib: ctx.ProgramLib, MachineLib: ctx.MachineLib };
   vm.createContext(c2);
-  vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-10-24'), before: programInfo('2026-10-23'), next: programInfo('2026-10-25'), rest: programInfo('2026-10-30'), week2: programInfo('2026-10-31'), end: programEnd(), sched: [...deloadWeeks()] };`, c2);
+  vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-10-24'), before: programInfo('2026-10-23'), skipped: programInfo('2026-10-25'), next: programInfo('2026-10-26'), legs: programInfo('2026-10-27'), rest: programInfo('2026-10-31'), week2: programInfo('2026-11-01'), end: programEnd(), sched: [...deloadWeeks()], wk5: dateOfDay(28) };`, c2);
   const o = JSON.parse(JSON.stringify(c2.out));
   assert.deepStrictEqual([o.first.status, o.first.week, o.first.day, o.first.session, o.first.phase.n, o.first.deload], ['active', 1, 1, 'PUSH A', 1, false]);
-  assert.strictEqual(o.before.status, 'not-started'); assert.strictEqual(o.next.session, 'PULL A'); assert.strictEqual(o.rest.session, 'REST');
-  assert.deepStrictEqual([o.week2.session, o.week2.week], ['PUSH A', 2]); assert.strictEqual(o.end, '2027-05-07');
+  assert.strictEqual(o.before.status, 'not-started'); assert.strictEqual(o.skipped.session, 'REST'); assert.strictEqual(o.skipped.week, 1);
+  assert.deepStrictEqual([o.next.session, o.next.day, o.next.week], ['PULL A', 2, 1]); assert.strictEqual(o.legs.session, 'LEGS A'); assert.strictEqual(o.rest.session, 'REST');
+  assert.deepStrictEqual([o.week2.session, o.week2.week], ['PUSH A', 2]); assert.strictEqual(o.end, '2027-05-08', 'one rest day: the program ends a day later');
+  assert.strictEqual(o.wk5, '2026-11-22', 'week 5 (the first deload) starts after four blocks of 7 training days plus the rest day');
   assert.deepStrictEqual(o.sched, [5, 10, 15, 20, 25]);
+});
+
+console.log('Extra rest days');
+check('A rest day pushes the rest of the schedule a day later: sessions, weeks, deloads, end date and the date inverse', () => {
+  run("REST_DAYS.push('2026-10-22'); _dlFor = null");
+  try {
+    const seq = ['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24'].map(k => info(k).session);
+    assert.deepStrictEqual(seq, ['PUSH A', 'PULL A', 'REST', 'LEGS A', 'PUSH B']);
+    assert.strictEqual(info('2026-10-23').day, 3);
+    assert.strictEqual(info('2026-10-22').week, 1); assert.strictEqual(info('2026-10-27').session, 'REST'); assert.deepStrictEqual([info('2026-10-28').session, info('2026-10-28').week], ['PUSH A', 2]);
+    assert.strictEqual(run('programEnd()'), '2027-05-04');
+    assert.strictEqual(run('dateOfDay(0)'), '2026-10-20'); assert.strictEqual(run('dateOfDay(2)'), '2026-10-23'); assert.strictEqual(run('dateOfDay(7)'), '2026-10-28');
+    for (const i of [0, 1, 2, 6, 7, 40, 195]) assert.strictEqual(run(`dayIndex(dateOfDay(${i}))`), i);
+    assert.deepStrictEqual(run('[...deloadWeeks()]'), [5, 10, 15, 20, 25]);
+    assert.strictEqual(info('2026-11-23').week, 5);
+  } finally { run("REST_DAYS.length = 0; _dlFor = null"); }
 });
 
 console.log('Plan tables');

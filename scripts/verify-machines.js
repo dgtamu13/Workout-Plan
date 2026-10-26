@@ -10,7 +10,7 @@ const M = require('../docs/machines.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'index.html'), 'utf8');
 const script = html.match(/<script>\n(\/\/ ═══ Program[\s\S]*?)<\/script>/)[1];
-const code = script.slice(0, script.indexOf('// ═══ Rest timer')).replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);');
+const code = script.slice(0, script.indexOf('// ═══ Rest timer')).replace(/const START = new Date\([^)]*\);[^\n]*/, 'const START = new Date(2026, 9, 20);').replace(/const REST_DAYS = \[[^\]]*\];/, 'const REST_DAYS = [];');
 const ls = {};
 const ctx = {
   console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp,
