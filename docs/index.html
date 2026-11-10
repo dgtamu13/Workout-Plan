@@ -894,9 +894,11 @@ const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d;
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 // Closed sections of a workout day (phase banner, overload plan, each exercise) are remembered on this device.
 const FOLDS_KEY = 'derek-tc-folds-v1';
-const foldClosed = new Set(lsGet(FOLDS_KEY, []));
+// Exercises ("x:" keys) always start collapsed when the app opens and stay open only until it is closed; the other sections remember their state.
+const isEx = key => key.startsWith('x:');
+const foldClosed = new Set(lsGet(FOLDS_KEY, []).filter(k => !isEx(k))), openEx = new Set();
 const saveFolds = () => lsSet(FOLDS_KEY, [...foldClosed]);
-const isFolded = key => foldClosed.has(key);
+const isFolded = key => isEx(key) ? !openEx.has(key) : foldClosed.has(key);
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 workouts = lsGet(LS.w, {}); drafts = lsGet(LS.d, {}); sessOverride = lsGet(LS.s, {});
 swapMemory = lsGet(LS.swaps, {}); fatigueLog = lsGet(LS.fatigue, {}); appliedPlans = lsGet(LS.applied, {});
@@ -2944,7 +2946,8 @@ function drawCharts() {
 function setFold(box, open) {
   const key = box.dataset.fold; box.classList.toggle('collapsed', !open);
   const h = box.querySelector('[data-act="fold"]'); if (h) h.setAttribute('aria-expanded', String(open));
-  if (open) foldClosed.delete(key); else foldClosed.add(key);
+  const set = isEx(key) ? openEx : foldClosed;
+  if (open === isEx(key)) set.add(key); else set.delete(key);
 }
 main.addEventListener('click', e => {
   const b = e.target.closest('[data-act="fold"], [data-act="fold-all"]'); if (!b) return;
