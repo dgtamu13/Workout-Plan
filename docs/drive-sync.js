@@ -189,7 +189,7 @@
   function importJSON(text) {
     const obj = JSON.parse(text);
     if (!obj || typeof obj.docs !== 'object') throw new Error('Not a Training Calendar backup file.');
-    const m = merge(obj.docs);
+    merge(obj.docs);
     saveStore(); fire(); schedulePush();
     return Object.keys(obj.docs).length;
   }

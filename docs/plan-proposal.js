@@ -562,6 +562,6 @@
     return !(appliedList || []).some(a => Date.parse(a.generatedAt) >= t);
   };
 
-  root.PlanProposal = { SESSIONS, SCHEMA, LIMITS, dayStr, lastCalorieChange, validate, parse, diff, explain, review, apply, defaults, isNewer, proposalId };
+  root.PlanProposal = { SESSIONS, LIMITS, dayStr, lastCalorieChange, validate, parse, review, apply, defaults, isNewer, proposalId };
   if (typeof module === 'object' && module.exports) module.exports = root.PlanProposal;
 })(typeof window !== 'undefined' ? window : globalThis);
