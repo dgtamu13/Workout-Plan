@@ -1636,7 +1636,7 @@ function selectDate(d) {
 
 // ═══ Render ═════════════════════════════════════════════════════════
 const TAB_LABEL = { lift:'Lifting', core:'Core', cardio:'Cardio', body:'Body', meals:'Meals', progress:'Progress', history:'History' };
-let _renderRaf = null, _prevTab = null;
+let _renderRaf = null;
 function render() {
   if (_renderRaf) return;
   _renderRaf = requestAnimationFrame(_doRender);
@@ -1653,7 +1653,6 @@ function _doRender() {
   });
   document.getElementById('tabDate').textContent = (tab === 'history' || tab === 'progress') ? '' : selected.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
   charts.forEach(c => { try { c.destroy(); } catch {} }); charts = []; chartQueue = []; chartGen++;
-  _prevTab = tab;
   const main = document.getElementById('main');
   main.innerHTML = (tab !== 'history' && window.PlanProposal ? proposalBanner('plan-open') : '') + (tab === 'history' ? renderHistory() : tab === 'progress' ? renderProgress() : tab === 'body' ? renderBody() : tab === 'meals' ? renderMeals() : renderDay(tab));
   drawCharts();
@@ -2524,7 +2523,6 @@ function foodOptions(slot, q) {
 function slotHTML(d, slot) {
   const rows = d.items.map((it, i) => ({ it, i })).filter(x => x.it.slot === slot);
   const t = sumMac(rows.map(x => x.it), it => it.on);
-  const open = openPicker === `meals:${slot}`;
   return `<div class="card"><div class="slot-head"><h3>${slot} <span>${SLOT_TIME[slot]}</span></h3><span class="m" id="ms-${slot}">${Math.round(t.kcal)} kcal · ${Math.round(t.p)} g P</span>${rows.some(x => x.it.planned != null) ? `<button class="mini" data-act="m-allon" data-slot="${slot}">Ate as planned</button>` : ''}</div>
     <div class="stack">${rows.map(({ it, i }) => foodRow(it, i)).join('') || '<div class="note">Nothing planned.</div>'}</div>
     <div class="picker" style="margin-top:8px"><button class="mini" data-act="m-add" data-slot="${slot}" aria-expanded="false">+ Add food</button></div>
@@ -2649,7 +2647,7 @@ function wattsCard(ws) {
   if (!ws.points.length) return `<div class="chart-card">${head}<div class="sub">${sub}</div><div class="chart-empty">Log average watts on a HIIT session to see this chart.</div></div>`;
   const sel = pr.hiitKey === 'all' || ws.combos.some(c => c.key === pr.hiitKey) ? pr.hiitKey : ws.latestKey;
   const opts = ws.combos.map(c => `<option value="${esc(c.key)}" ${sel === c.key ? 'selected' : ''}>${esc(c.label)} (${c.count})</option>`).join('') + (ws.combos.length > 1 ? `<option value="all" ${sel === 'all' ? 'selected' : ''}>All setups</option>` : '');
-  let extra = '', notes = '';
+  let extra = '', notes;
   if (sel !== 'all') {
     const pts = ws.points.filter(p => p.key === sel), b = pts[0], l = pts[pts.length - 1], d = l.watts - b.watts, at = ws.points.indexOf(b), prev = at > 0 ? ws.points[at - 1] : null;
     extra = `<div class="kv tiles" style="margin-bottom:10px">${tile('Baseline', `${b.watts} W`, shortDate(b.date))}${tile('Latest', `${l.watts} W`, shortDate(l.date))}${tile('Change', pts.length > 1 ? `${sgn(d, 0)} W` : '—', pts.length > 1 && b.watts ? `${sgn(d / b.watts * 100, 1)}%` : 'first session', trendCls(pts.length > 1 ? d : null))}</div>`;

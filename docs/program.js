@@ -227,5 +227,5 @@
   // Label stored on workouts and drafts so records say which program built them: "b1" built-in v1, "a3" agent v3, "m2" manual v2.
   const tag = doc => `${doc.source[0]}${doc.version}`;
 
-  return { BUILTIN, SESSIONS, validate, build, tag, liftTables, coreTables, cardioTables, zone2, bySession, fmtRest };
+  return { BUILTIN, SESSIONS, validate, build, tag, liftTables, bySession, fmtRest };
 });

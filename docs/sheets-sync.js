@@ -212,7 +212,7 @@
   }
 
   root.SheetsSync = {
-    FOLDER_NAME, SHEET_NAME, PLAN_FILE, PLAN_TAB, TABS, SCOPE,
+    SCOPE,
     configure: o => { if (o && o.getTables) getTables = o.getTables; },
     state: () => state, error: () => lastError, linked: () => !!ids.linked, lastPublished: () => lastPublished,
     links: () => ({
