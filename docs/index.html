@@ -646,9 +646,9 @@ body.resting .main { padding-bottom:120px; }
 <script src="sheets-sync.js"></script>
 <script>
 // ═══ Program ════════════════════════════════════════════════════════
-const START = new Date(2026, 9, 24); // Day 1 (PUSH A): Sat Oct 24, 2026
+const START = new Date(2026, 10, 10); // Day 1 (PUSH A): Tue Nov 10, 2026
 // Extra rest days taken since Day 1 (sorted). Each one is a REST day and pushes the rest of the program one day later.
-const REST_DAYS = ['2026-10-25'];
+const REST_DAYS = [];
 const CYCLE = ['PUSH A','PULL A','LEGS A','PUSH B','PULL B','LEGS B','REST'];
 const SESSIONS = CYCLE.slice(0, 6);
 const TYPES = { lift:'Lifting', core:'Core', cardio:'Cardio' };
@@ -879,7 +879,7 @@ let openPicker = null; // "type:i"
 let db = null, downloads = null;
 let syncMode = 'pending'; // pending | cloud | local
 let status = {};       // id -> {cls, text}
-let hf = { type:'all', from:keyOf(START), to:'', q:'' };
+let hf = { type:'all', from:'', to:'', q:'' };
 let csvFallback = null;
 let delArm = null;
 

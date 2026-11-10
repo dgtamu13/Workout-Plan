@@ -35,9 +35,9 @@ Open the site on your phone, then **Share → Add to Home Screen** (iOS Safari) 
 ## Program
 
 A 28-week plan that repeats a 7-day cycle counted from Day 1 (not tied to weekdays): PUSH A, PULL A, LEGS A (hypertrophy), PUSH B, PULL B, LEGS B (strength), then REST.
-Everything derives from the single `START` constant in `docs/index.html`. Day 1 (PUSH A) is Sat 2026-10-24, so program weeks run Saturday to Friday and the Friday of each week is a rest day.
+Everything derives from the single `START` constant in `docs/index.html`. Day 1 (PUSH A) is Tue 2026-11-10, so program weeks run Tuesday to Monday and the Monday of each week is a rest day. The program was restarted on that date; earlier logs stay in History and still feed your targets, but they count as before Day 1.
 
-When you take an unplanned rest day, add its date to the `REST_DAYS` constant next to `START`: that day shows as REST and the whole schedule after it moves a day later (weeks, deloads and the end date included). Sun 2026-10-25 is the first one, so Mon 2026-10-26 is PULL A (Day 2).
+When you take an unplanned rest day, add its date to the `REST_DAYS` constant next to `START`: that day shows as REST and the whole schedule after it moves a day later (weeks, deloads and the end date included).
 
 | Phase | Weeks |
 | --- | --- |

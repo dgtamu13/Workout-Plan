@@ -87,18 +87,17 @@ check('Every 5th week (5 / 10 / 15 / 20 / 25) is a deload with the exact date ra
   for (const [w, [a, b]] of Object.entries(DL)) { assert.strictEqual(seen[w][0], a); assert.strictEqual(seen[w][seen[w].length - 1], b); assert.strictEqual(seen[w].length, 7); }
 });
 
-check('The program starts on its real Day 1 (Sat 2026-10-24, PUSH A) and the rest day on 2026-10-25 shifts everything after it a day', () => {
-  assert.ok(/const START = new Date\(2026, 9, 24\)/.test(html), 'START in index.html');
+check('The program starts on its real Day 1 (Tue 2026-11-10, PUSH A); Mondays are rest days', () => {
+  assert.ok(/const START = new Date\(2026, 10, 10\)/.test(html), 'START in index.html');
+  assert.ok(/const REST_DAYS = \[\];/.test(html), 'no extra rest days since the restart');
   const c2 = { console, Math, Date, JSON, Object, Array, Set, Map, Number, String, RegExp, localStorage: ctx.localStorage, location: { hash: '' }, ProgramLib: ctx.ProgramLib, MachineLib: ctx.MachineLib };
   vm.createContext(c2);
-  vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-10-24'), before: programInfo('2026-10-23'), skipped: programInfo('2026-10-25'), next: programInfo('2026-10-26'), legs: programInfo('2026-10-27'), rest: programInfo('2026-10-31'), week2: programInfo('2026-11-01'), end: programEnd(), sched: [...deloadWeeks()], wk5: dateOfDay(28) };`, c2);
+  vm.runInContext(`const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); }; const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000);\n${realCode}\nthis.out = { first: programInfo('2026-11-10'), before: programInfo('2026-11-09'), next: programInfo('2026-11-11'), rest: programInfo('2026-11-16'), week2: programInfo('2026-11-17'), end: programEnd(), sched: [...deloadWeeks()], wk5: dateOfDay(28), mondays: ['2026-11-23', '2026-11-30', '2027-05-24'].map(k => programInfo(k).session) };`, c2);
   const o = JSON.parse(JSON.stringify(c2.out));
   assert.deepStrictEqual([o.first.status, o.first.week, o.first.day, o.first.session, o.first.phase.n, o.first.deload], ['active', 1, 1, 'PUSH A', 1, false]);
-  assert.strictEqual(o.before.status, 'not-started'); assert.strictEqual(o.skipped.session, 'REST'); assert.strictEqual(o.skipped.week, 1);
-  assert.deepStrictEqual([o.next.session, o.next.day, o.next.week], ['PULL A', 2, 1]); assert.strictEqual(o.legs.session, 'LEGS A'); assert.strictEqual(o.rest.session, 'REST');
-  assert.deepStrictEqual([o.week2.session, o.week2.week], ['PUSH A', 2]); assert.strictEqual(o.end, '2027-05-08', 'one rest day: the program ends a day later');
-  assert.strictEqual(o.wk5, '2026-11-22', 'week 5 (the first deload) starts after four blocks of 7 training days plus the rest day');
-  assert.deepStrictEqual(o.sched, [5, 10, 15, 20, 25]);
+  assert.strictEqual(o.before.status, 'not-started'); assert.deepStrictEqual([o.next.session, o.next.day], ['PULL A', 2]); assert.strictEqual(o.rest.session, 'REST');
+  assert.deepStrictEqual([o.week2.session, o.week2.week], ['PUSH A', 2]); assert.deepStrictEqual(o.mondays, ['REST', 'REST', 'REST']);
+  assert.strictEqual(o.end, '2027-05-24'); assert.deepStrictEqual(o.sched, [5, 10, 15, 20, 25]); assert.strictEqual(o.wk5, '2026-12-08');
 });
 
 console.log('Extra rest days');
