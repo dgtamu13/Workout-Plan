@@ -21,7 +21,8 @@
   const Z2_KEYS = ['date', 'session', 'type', 'machine', 'durationMin', 'hrLow', 'hrHigh'];
   const MACRO = { kcal: ['calories', 'kcal'], p: ['protein', 'g'], f: ['fat', 'g'], c: ['carbs', 'g'] };
   // Hard limits. A file outside them is rejected before it is shown.
-  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148] };
+  const LIMITS = { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148],
+    autoSets: 1, autoReps: 2, autoRestSec: 30 }; // auto*: the largest sets / rep-range / rest change that may start accepted
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   const MACHINE_RE = /^[A-Za-z0-9][A-Za-z0-9 ./&()-]{0,39}$/; // plain machine names only: the name ends up in the cardio form
 
@@ -332,6 +333,14 @@
   const CORE_FIELDS = [['sets', 'Sets', e => String(e.sets)], ['target', 'Target', e => e.target]];
   const liftSummary = e => `${e.sets} × ${fmtRange(e.reps)}${e.perSide ? '/' + e.perSide : ''}${e.targetLb ? ' @ ' + e.targetLb + ' lb' : ''}`;
   const sameOrder = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  // A sets, rep-range or rest change bigger than the auto limits always needs approval.
+  const span = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
+  const overLimit = (f, o, x) => {
+    if (f === 'sets') return Math.abs(x.sets - o.sets) > LIMITS.autoSets;
+    if (f === 'reps') return Math.abs(x.reps.low - o.reps.low) > LIMITS.autoReps || Math.abs(x.reps.high - o.reps.high) > LIMITS.autoReps;
+    if (f === 'restSec') { const a = span(o.restSec), b = span(x.restSec); return Math.abs(a[0] - b[0]) > LIMITS.autoRestSec || Math.abs(a[1] - b[1]) > LIMITS.autoRestSec; }
+    return false;
+  };
 
   // current: { program, plan, foods }. Returns the changes; review() attaches the reasons and tags.
   function diff(current, proposal) {
@@ -350,7 +359,7 @@
           if (!o) return add({ ref: `${base}/${x.name}`, group, section: key, kind: 'add', name: x.name, label: `Add ${x.name}`, from: null, to: summary(x), force: true });
           for (const [f, label, fmt] of fields) {
             if (fmt(o) === fmt(x)) continue; // compare what the user would see, so equivalent spellings ("Chest" vs ["Chest"]) are not changes
-            add({ ref: `${base}/${o.name}/${f}`, group, section: key, kind: 'change', name: o.name, field: f, label: `${o.name}: ${label}`, from: fmt(o), to: fmt(x) });
+            add({ ref: `${base}/${o.name}/${f}`, group, section: key, kind: 'change', name: o.name, field: f, label: `${o.name}: ${label}`, from: fmt(o), to: fmt(x), force: overLimit(f, o, x) });
           }
         });
         const keep = cur.map(e => e.name).filter(n => newNames.includes(lower(n))), want = list.map(e => e.name).filter(n => curNames.includes(lower(n)));

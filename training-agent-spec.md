@@ -1,8 +1,13 @@
-# Training Agent Spec (v0.2)
+# Training Agent Spec (v0.3)
 
 Operating assumption: **lean bulk**, target gain **+0.25 lb/week**, band **0.1–0.5 lb/week**. All deficit language in older docs is stale.
 
-The agent runs **every day** (late evening, after the day's workout is logged). It reads the Training Calendar Sheet, looks at what was logged that day (sets, notes, machines, readiness, skipped workouts), decides what to change for the coming days, and writes the plan into the Sheet's `Plan` tab, plus a readable "what changed and why" note in the "Training Calendar Data" folder in Drive. The app validates the file and shows every change to the user, who accepts or rejects each one. The exact file format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); this document says what the agent should decide and why.
+The agent runs **once a week, Sunday at 10 pm Eastern**. It reads the Training Calendar Sheet, looks at every session logged since Day 1 for each workout type (lifting, core, cardio), works out how each exercise is trending (loads, reps, sets, rest, readiness, notes, machines, skipped workouts), optimizes the coming program week's weight, sets, reps and rest time, and writes the plan into the Sheet's `Plan` tab, plus a readable "what changed and why" note in the "Training Calendar Data" folder in Drive. The app validates the file and shows every change to the user, who accepts or rejects each one. The exact file format is in [PLAN_SCHEMA.md](PLAN_SCHEMA.md); this document says what the agent should decide and why.
+
+## What changed in v0.3
+
+- The agent runs weekly (Sunday 10 pm Eastern) instead of nightly, and plans the whole coming program week from the trend of all logged sessions.
+- It optimizes sets, reps and rest time as well as weight (section 2, "Weekly optimization"). Small changes start accepted; the app forces bigger ones to need approval.
 
 ## What changed from v0.1
 
@@ -38,6 +43,19 @@ The agent runs **every day** (late evening, after the day's workout is logged). 
   - The swap is pre-accepted in the review. The user can reject it, or undo the whole plan after applying it.
 - Any other added or removed exercise needs approval.
 - Match logged sessions by the `Exercise` column. If the user swapped an exercise on the day (`Exercise` differs from `Planned Exercise`), that session does not count for the program exercise and is not a stall.
+
+### Weekly optimization: weight, sets, reps and rest
+
+Look at every logged session of each exercise since Day 1, in reference pounds (`Ref Weight (lb)`, `e1RM (lb)`), leaving out deload weeks, low-readiness days, skipped workouts and calibration sessions. Decide from the last 3 sessions, and use the trend over the last 4 weeks to confirm.
+
+- **Weight (`targetLb`, auto):** double progression as above. If every set went 2 or more reps past the top of the range, the step may be two increments. If the top-set e1RM has fallen in each of the last 2 sessions, hold the weight and look at sets and rest first.
+- **Sets (`sets`):** +1 set when the exercise's e1RM rose over the last 2 weeks, readiness averages 3.5/5 or better, and the muscle group is under 20 working sets a week. −1 set when e1RM fell 2 weeks running, readiness averages 2.5 or less, or the notes say sessions ran out of time. Keep 2 to 6 sets per exercise.
+- **Reps (`reps`):** keep the phase's rep ranges. Move a range only when the load step is too big to progress: the top of the range is hit at one weight but the bottom is missed at the next (raise the top by up to 2), or the bottom is missed for 2 sessions at the lightest load available on that machine (lower the bottom by up to 2).
+- **Rest (`restSec`):** +30 sec when reps drop by 3 or more from the first to the last working set at the same weight in 2 sessions. −15 to −30 sec when every set holds reps within 1 of the first set at the target RIR for 3 sessions and sessions run long. Never under 45 sec for isolation lifts or 90 sec for compounds.
+- **Limits:** a change of at most 1 set, 2 reps at either end of the range, and 30 sec of rest starts accepted (`auto`). Anything bigger, tag `approval` with a question. The app forces it to need approval either way.
+- **Machines:** loads on different machines are compared only in reference pounds; `targetLb` is in reference pounds and the app converts it to the machine picked at the gym.
+- **Core:** the same idea with sets and `target` (reps or seconds): raise the target when every set hit it for 2 sessions; +1 set at most per week.
+- **Cardio:** HIIT and Zone 2 progression as in section 4.
 
 ## 3. Nutrition protocol
 
@@ -138,18 +156,16 @@ These stay with the agent:
 - keeping at least 3 HIIT sessions a week, and a sensible week of cardio overall;
 - choosing replacement exercises that make sense beyond muscle group and pattern.
 
-## 8. Daily run
+## 8. Weekly run (Sunday 10 pm Eastern)
 
-0. Find today's entries: `Workouts` rows dated today (sets, the `Notes` column and the `Machine` column), today's `Fatigue` check-in, and today's `Body` weigh-in. If nothing was logged today (a rest day, or nothing submitted yet), make no plan and write no note.
-   - A row with `Workout Skipped` = Yes means the whole workout was skipped on purpose (`Skip Reason` says why). It is not a performed session: it never counts toward a stall or double progression, and a reason such as "Sick or injured" is a readiness signal.
-   - Read the notes. They say what was different: pain, fatigue, time pressure, and especially **which machine or cable stack was used**. The same exercise on a different machine (for example a Precor cable stack for the baseline lateral raises, a Life Fitness one today) is not comparable pound for pound. The app records the machine for every lift and converts loads to the exercise's reference machine: compare loads using `Ref Weight (lb)` and `e1RM (lb)`, never the raw `Weight` across machines. A row whose machine is `uncalibrated` in the `Machines` tab, or the first session on a new machine (a calibration session), is not evidence of progress or a stall. If the notes name a machine that differs from the `Machine` column, trust the column for the numbers and mention the mismatch in the note. `targetLb` is always in reference-machine pounds; the app converts it to whatever machine is used that day.
-1. Read the Sheet tabs. Note the last calorie change and lockout end, and the program's Day 1 date (`Program` tab, `Meta` row "start date (Day 1, PUSH A)"). The `Program` tab's Meta row "rest days inserted" lists extra rest days already taken: each one is a REST day and pushes the rest of the program a day later, so program weeks are blocks of seven training days, not fixed calendar weeks (use the "scheduled deload weeks" row and the tab's dates, not date arithmetic from Day 1). Set the plan's `weekStart` to tomorrow: the first day the changes apply. Changes to an exercise take effect the next time its session comes round.
-2. Check deload triggers (readiness and missed rep targets). If both fire, write `deload` and its `changeLog` entry.
-3. For each lifting exercise: double progression -> `targetLb`; 3-session stall -> a swap.
-4. Cardio: HIIT and Zone 2 progression within the ceilings.
-5. Calories: compute the 7-day average trend; if a calorie change is allowed (outside the lockout), propose +/-100-150 kcal with protein unchanged, tagged for approval; otherwise put any flag in `note`.
-6. Write `changeLog` (a reason for every change) and `approvals`, set a new `generatedAt`, and write the JSON into the Sheet's `Plan` tab. Write the readable note beside it.
-7. Most days only today's exercises change. Calorie changes still follow the 14-day lockout, so a daily run usually leaves calories alone.
+1. Read every tab of the Sheet. Note the last calorie change and lockout end. The `Program` tab's `Meta` rows give Day 1, the "week start dates" of every program week, the "rest days inserted" (each pushes the rest of the program a day later) and the "scheduled deload weeks". Set the plan's `weekStart` to the first program-week start date after today (normally the coming Tuesday; Monday is the rest day).
+2. Gather each exercise's sessions since Day 1 from `Workouts` (match on `Exercise`; a same-day swap does not count for the program exercise). Read the `Notes` and `Machine` columns: compare loads only in `Ref Weight (lb)` and `e1RM (lb)`; a row whose machine is `uncalibrated` in the `Machines` tab, or the first session on a new machine, is not evidence of progress or a stall. A row with `Workout Skipped` = Yes is not a performed session; a reason such as "Sick or injured" is a readiness signal.
+3. Check deload triggers (readiness and missed rep targets). If both fire, write `deload` and its `changeLog` entry. If next week is a scheduled deload week, make no load or volume increases.
+4. For each lifting exercise, apply section 2: weight, sets, reps and rest from the trend; a 3-session stall becomes a swap.
+5. Core and cardio: section 2 (core) and section 4 (HIIT and Zone 2 within the ceilings).
+6. Calories: compute the 7-day average trend; if a calorie change is allowed (outside the lockout), propose +/-100-150 kcal with protein unchanged, tagged for approval; otherwise put any flag in `note`.
+7. Write `changeLog` (a reason and evidence for every change, with the machine and the reference-lb figure where relevant) and `approvals`, set a new `generatedAt`, and write the JSON into the Sheet's `Plan` tab. Write the readable note beside it.
+8. If nothing was logged since the last run, or nothing needs to change, write no plan and say so in the note.
 
 ## 9. Open items
 

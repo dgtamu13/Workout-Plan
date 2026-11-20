@@ -165,9 +165,10 @@ Entries the agent tags `approval` start unaccepted. In addition, the app **alway
 - every meal change (calories, macros, menus),
 - a deload pull-forward,
 - adding or removing an exercise that is not part of a stall swap,
-- switching a cardio session between HIIT and Zone 2.
+- switching a cardio session between HIIT and Zone 2,
+- a change that moves an exercise's sets by more than 1 set, a rep-range end by more than 2, or rest by more than 30 sec (either end of the range). Smaller sets, reps and rest changes can be `auto`.
 
-`auto` is for changes such as load increases, core target bumps, cardio progression and **stall swaps**. Switching a cardio session between HIIT and Zone 2 always needs approval. A stall swap is an entry with `kind: "stall-swap"` that covers one removed exercise and one added exercise in the same session. It is pre-accepted, and the two halves always go together: rejecting either one rejects both. The agent may still tag a swap `approval` when it wants you to confirm it first.
+`auto` is for changes such as load increases, small sets / reps / rest adjustments, core target bumps, cardio progression and **stall swaps**. Switching a cardio session between HIIT and Zone 2 always needs approval. A stall swap is an entry with `kind: "stall-swap"` that covers one removed exercise and one added exercise in the same session. It is pre-accepted, and the two halves always go together: rejecting either one rejects both. The agent may still tag a swap `approval` when it wants you to confirm it first.
 
 ## Limits that reject the file
 
