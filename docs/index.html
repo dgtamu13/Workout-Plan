@@ -220,6 +220,7 @@ input::placeholder, textarea::placeholder { color:var(--fg3); }
 .mach { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:8px; font-size:.78rem; color:var(--fg2); }
 .mach-l { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--fg3); }
 .mach select { font:inherit; font-family:var(--sans, inherit); text-transform:none; letter-spacing:0; font-size:.82rem; color:var(--fg); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:4px 6px; max-width:58vw; }
+.mach .link-btn { background:none; border:0; padding:0; font:inherit; font-size:.76rem; color:var(--fg3); text-decoration:underline; cursor:pointer; }
 .mach-info { font-size:.76rem; color:var(--fg2); }
 .mach-form { margin-top:8px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--card); font-size:.8rem; display:grid; gap:8px; }
 .mach-form .mf-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
@@ -1776,6 +1777,10 @@ function machinesUsed(name) {
   return Object.keys(last).sort((a, b) => last[b].localeCompare(last[a]));
 }
 let machEdit = null; // { i, mode:'add'|'cal' } while a machine form is open on lift card i
+// The picker shows on machine and cable lifts, on any lift already logged on a named machine, and on others after "Using a machine?".
+const MACHINE_LIFT_RE = /cable|machine|smith|pec deck|pulldown|pushdown|face pull|rope|leg press|leg curl|leg extension|hack squat|pendulum|iso row|t-bar|assisted|calf raise/i;
+const machShown = new Set();
+const showMachine = ex => MACHINE_LIFT_RE.test(ex.name) || !!ex.machine || machShown.has(ex.name) || machinesUsed(ex.name).some(Boolean);
 function machineHTML(ex, i, rec) {
   const reg = machineReg, b = reg.byExercise[ex.name] || {}, cal = rec.mc && calFor(ex.name), rid = rec.mc ? rec.mc.id : '';
   const used = machinesUsed(ex.name), sel = rid;
@@ -1842,7 +1847,7 @@ function liftRow(ex, i, session, k) {
       <div class="ex-num">${String(i+1).padStart(2,'0')}</div>
       ${pickerHTML('lift', i, ex)}
       <div class="meta">${tag(p[1])}<span>${p[2]} × ${esc(p[3])}</span><button class="rest-btn" data-act="rest" data-i="${i}" title="Start rest timer">⏱ Rest ${esc(p[4])}</button></div>
-      ${machineHTML(ex, i, rec)}
+      ${showMachine(ex) ? machineHTML(ex, i, rec) : `<div class="mach"><button class="link-btn" data-act="mach-show" data-i="${i}">Using a machine?</button></div>`}
       <div class="rec"><div class="rec-head"><div class="rec-title">Target today</div>${rec.status ? `<span class="dp ${rec.status.cls}">${esc(rec.status.text)}</span>` : ''}</div><div class="targets">${targets}</div><div class="ovl ${ov.cls}"><b>${esc(ov.act)}</b><span>${esc(ov.text)}</span></div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}<div class="pr-best">${esc(prTxt)}</div></div>
     </div>
     <div class="actual">
@@ -2187,7 +2192,8 @@ function machineAction(act, i) {
   if (act === 'mach-cancel') { machEdit = null; renderNow(); return; }
   const ex = curDraft().exercises[i]; if (!ex) return;
   const val = id => document.getElementById(id)?.value ?? '';
-  if (act === 'mach-cal') { machEdit = machEdit && machEdit.i === i && machEdit.mode === 'cal' ? null : { i, mode:'cal' }; }
+  if (act === 'mach-show') machShown.add(ex.name);
+  else if (act === 'mach-cal') { machEdit = machEdit && machEdit.i === i && machEdit.mode === 'cal' ? null : { i, mode:'cal' }; }
   else if (act === 'mach-add-save') {
     const name = val('mf-name').trim();
     if (!name) { document.getElementById('mf-name')?.focus(); return; }
@@ -3237,6 +3243,7 @@ function programRows() {
   const rows = [PROGRAM_COLS], add = o => rows.push(PROGRAM_COLS.map(c => o[c] ?? ''));
   const p = PROGRAM, rest = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
   add({ Area:'Meta', Name:'start date (Day 1, PUSH A)', 'Cue / Target':keyOf(START) }); add({ Area:'Meta', Name:'rest days inserted (everything after shifts a day later)', 'Cue / Target':REST_DAYS.join(', ') }); add({ Area:'Meta', Name:'weeks', 'Cue / Target':`${PROGRAM_WEEKS} program weeks of 7 training days from Day 1 (the inserted rest days do not count); the last day is ${programEnd()}` });
+  add({ Area:'Meta', Name:'week start dates', 'Cue / Target':Array.from({ length:PROGRAM_WEEKS }, (_, w) => `${w + 1}: ${dateOfDay(w * 7)}`).join(', ') });
   add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
   add({ Area:'Meta', Name:'deloadWeeks (pull-forward)', 'Cue / Target':(p.deloadWeeks || []).join(', ') });
   add({ Area:'Meta', Name:'scheduled deload weeks', 'Cue / Target':[...deloadWeeks()].sort((a, b) => a - b).join(', ') });

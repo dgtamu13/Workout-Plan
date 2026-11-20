@@ -78,6 +78,17 @@ rejects('an unknown changeLog field', f => { f.changeLog[0].priority = 1; }, /ch
 rejects('the wrong schema name', f => { f.schema = 'training-calendar-plan'; }, /schema: must be/);
 rejects('a missing generatedAt', f => { delete f.generatedAt; }, /generatedAt/);
 rejects('HIIT rounds above 16', f => { f.cardio[0].rounds = 17; }, /17 is over the limit of 16 HIIT rounds/);
+check('Sets ±1, rep range ±2 and rest ±30 sec stay automatic; anything bigger needs approval even if tagged auto', () => {
+  const set = (fields) => mut(f => { Object.assign(f.lifting['PUSH A'][1], fields); f.changeLog.find(c => c.id === 'c1').refs.push('lifting/PUSH A/Cable Lateral Raise'); });
+  const tagOf = (fields, field) => byRef(review(set(fields)), `lifting/PUSH A/Cable Lateral Raise/${field}`);
+  const small = review(set({ sets: 5, reps: { low: 10, high: 13 }, restSec: { low: 90, high: 120 } })); assert.ok(small.ok, small.errors.join());
+  for (const f of ['sets', 'reps', 'restSec']) { const c = byRef(small, `lifting/PUSH A/Cable Lateral Raise/${f}`); assert.ok(c && c.tag === 'auto' && !c.forced, f); }
+  for (const [fields, f] of [[{ sets: 6 }, 'sets'], [{ sets: 2 }, 'sets'], [{ reps: { low: 12, high: 18 } }, 'reps'], [{ reps: { low: 9, high: 15 } }, 'reps'], [{ restSec: { low: 60, high: 121 } }, 'restSec'], [{ restSec: 45 }, 'restSec']]) {
+    const c = tagOf(fields, f); assert.ok(c && c.tag === 'approval' && c.forced, JSON.stringify(fields));
+  }
+  const r = review(set({ sets: 6 })); assert.strictEqual(P.defaults(r.changes)['lifting/PUSH A/Cable Lateral Raise/sets'], false, 'starts unticked');
+  assert.strictEqual(byRef(r, 'lifting/PUSH A/Incline DB Press/targetLb').tag, 'auto', 'a load change in the same entry stays automatic');
+});
 check('HIIT rounds of exactly 16 and Zone 2 of exactly 60 minutes are allowed', () => {
   const r = review(mut(f => { f.cardio[0].rounds = 16; f.cardio[1].durationMin = 60; })); assert.ok(r.ok, r.errors.join());
 });
@@ -286,7 +297,8 @@ check('PLAN_SCHEMA.md has a full example identical to the shipped example file, 
 });
 check('The limits table in PLAN_SCHEMA.md matches the limits in the code', () => {
   const md = fs.readFileSync(path.join(root, 'PLAN_SCHEMA.md'), 'utf8');
-  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148] });
+  assert.deepStrictEqual(P.LIMITS, { hiitRounds: 16, zone2Minutes: 60, kcalStep: 150, lockoutDays: 14, hiitSessions: 4, stallSessions: 3, zone2Hr: [136, 148], autoSets: 1, autoReps: 2, autoRestSec: 30 });
+  assert.ok(/more than 1 set, a rep-range end by more than 2, or rest by more than 30 sec/.test(md));
   assert.ok(/At most 16/.test(md) && /At most 60 minutes/.test(md) && /at most 150 kcal/.test(md) && /14 days/.test(md) && /136–148/.test(md));
 });
 
