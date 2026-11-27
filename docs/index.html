@@ -756,6 +756,15 @@ const shortDate = k => fromKey(k).toLocaleDateString('en-US', { month:'short', d
 const longDate = k => fromKey(k).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
 const num = v => (v === null || v === undefined || v === '' || isNaN(+v)) ? null : +v;
 const clone = o => JSON.parse(JSON.stringify(o));
+// Everything the app records carries a timestamp. Stored as UTC ISO strings (set `t`, meal item `at`, check-in `at`, workout `startedAt` and
+// `submittedAt`); exported to the Sheet and CSV as local time with the UTC offset, for example 2026-11-27T18:42:05-05:00.
+const nowIso = () => new Date().toISOString();
+function stamp(v) {
+  const d = v ? new Date(v) : null; if (!d || isNaN(d)) return '';
+  const o = -d.getTimezoneOffset(), a = Math.abs(o), z = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}${o >= 0 ? '+' : '-'}${z(Math.floor(a / 60))}:${z(a % 60)}`;
+}
+const clockTime = v => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : ''; };
 // ═══ 28-week program: phases, deloads, week math (everything derives from START) ═══
 // Deloads follow the training agent spec: every 5th working week (5, 10, 15, ...), counted from the last deload. A pull-forward
 // deload (config/program deloadWeeks, the first day of the week) is a deload week too and restarts the count, so later deloads move with it.
@@ -2072,6 +2081,7 @@ function renderHistory() {
       <summary><span class="hw-date">${longDate(w.date)}</span><span class="badge" style="background:color-mix(in srgb,${COLOR[w.session] || 'var(--fg3)'} 18%,transparent);color:${COLOR[w.session] || 'var(--fg2)'}">${TYPES[w.type]}${w.session && w.session !== 'REST' ? ' · ' + w.session : ''}</span>${w.skipped ? '<span class="badge skip-badge">Skipped</span>' : ''}<span class="hw-sum">${esc(w.skipped ? (w.skipReason || 'Skipped') : summaryOf(w))}${(() => { const n = sessionPRs(w).length; return n ? `<span class="pr">${n} PR</span>` : ''; })()}</span></summary>
       <div class="hw-body">
         <div class="htable-wrap">${detailTable(w)}</div>
+        ${w.startedAt || w.submittedAt ? `<div class="hw-notes"><span class="field-label">Time</span><br>${w.startedAt ? `Started ${clockTime(w.startedAt)} · ` : ''}Submitted ${clockTime(w.submittedAt)}${w.startedAt && w.submittedAt ? ` · ${Math.max(1, Math.round((Date.parse(w.submittedAt) - Date.parse(w.startedAt)) / 60000))} min` : ''}</div>` : ''}
         ${w.notes ? `<div class="hw-notes"><span class="field-label">Notes</span><br>${esc(w.notes)}</div>` : ''}
         <div class="hw-actions">
           <button class="mini" data-act="open" data-id="${esc(w.id)}">Open this day</button>
@@ -2097,24 +2107,27 @@ function renderHistory() {
 }
 
 // ═══ CSV ════════════════════════════════════════════════════════════
-const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason','Ref Weight (lb)','Ref Machine'];
+const CSV_HEAD = ['Date','Session','Type','Exercise','Planned Exercise','Skipped','Set','Weight','Reps','Value','Unit','Machine','Duration (min)','Avg HR (bpm)','Max HR (bpm)','Distance (mi)','Rounds','Speed/Level','Notes','Muscle Group','e1RM (lb)','PR','Work (s)','Rest (s)','Avg Watts','HR Recovery 60s','Workout Skipped','Skip Reason','Ref Weight (lb)','Ref Machine','Started At','Set Logged At','Rest Before Set (s)','Submitted At'];
 const cq = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const TYPE_ORDER = { lift:0, core:1, cardio:2 };
+// Timestamp columns: workout start, when this set was logged, seconds since the previous logged set of the same exercise, workout submit.
+const timeCols = (w, s, prevT) => [stamp(w.startedAt), stamp(s && s.t), s && s.t && prevT ? Math.round((Date.parse(s.t) - Date.parse(prevT)) / 1000) : '', stamp(w.submittedAt)];
 function workoutRows(list) {
   const rows = [CSV_HEAD];
   for (const w of list.slice().sort((a, b) => a.date.localeCompare(b.date) || (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9))) {
-    if (w.skipped) { rows.push([w.date, w.session, TYPES[w.type], '(whole workout)', '', 'Yes', '', '', '', '', '', '', '', '', '', '', '', '', w.notes, '', '', '', '', '', '', '', 'Yes', w.skipReason || '', '', '']); continue; }
+    if (w.skipped) { rows.push([w.date, w.session, TYPES[w.type], '(whole workout)', '', 'Yes', '', '', '', '', '', '', '', '', '', '', '', '', w.notes, '', '', '', '', '', '', '', 'Yes', w.skipReason || '', '', '', ...timeCols(w)]); continue; }
     for (const e of w.exercises) {
       const base = [w.date, w.session, TYPES[w.type], e.name, e.planned, e.skipped ? 'Yes' : 'No'];
-      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60, '', '', '', '']);
+      if (w.type === 'cardio') rows.push([...base, '', '', '', '', '', e.machine, e.duration, e.hr, e.maxhr, e.distance, e.rounds, e.level, w.notes, '', '', '', e.workSec, e.restSec, e.avgWatts, e.hrRec60, '', '', '', '', ...timeCols(w)]);
       else {
         const mg = w.type === 'lift' ? musclesOf(e.name).join(' / ') : 'Core';
         const prior = w.type === 'lift' && !e.skipped ? bestBefore(e.name, w.date) : null;
         const lift = w.type === 'lift', mach = lift ? machineName(exMachine(e.name, e)) : '', refId = lift ? calFor(e.name).ref : null, ref = machineName(refId), c = lift ? exScale(e.name, e) : null;
+        let prevT = null;
         e.sets.forEach((s, j) => { const rw = c == null || num(s.w) === null ? null : num(s.w) * c, est = lift ? e1rm(rw, num(s.r)) : null; rows.push([...base, j + 1,
           s.w, lift ? s.r : '', w.type === 'core' ? s.v : '', w.type === 'core' ? e.unit : `${{ pl:'plate' }[wUnit(e)] || wUnit(e)}×reps`,
           mach, '', '', '', '', '', '', j === 0 ? w.notes : '', mg, est ?? '', prior && est > prior.v ? 'Yes' : '', '', '', '', '', '', '',
-          rw == null ? '' : Math.round(rw * 10) / 10, lift ? ref || (refId === '' ? '(not set)' : '') : '']); });
+          rw == null ? '' : Math.round(rw * 10) / 10, lift ? ref || (refId === '' ? '(not set)' : '') : '', ...timeCols(w, s, prevT)]); if (s.t) prevT = s.t; });
       }
     }
   }
@@ -2123,9 +2136,9 @@ function workoutRows(list) {
 const rowsToCSV = rows => rows.map(r => r.map(cq).join(',')).join('\r\n');
 function toCSV(list) { return rowsToCSV(workoutRows(list)); }
 function bodyRows() {
-  const rows = [['Date','Weight (lb)','Body Fat (%)','Muscle (%)','Waist (in)','Lean Mass (lb)','Fat Mass (lb)','7-day Avg Weight (lb)','Notes']];
+  const rows = [['Date','Weight (lb)','Body Fat (%)','Muscle (%)','Waist (in)','Lean Mass (lb)','Fat Mass (lb)','7-day Avg Weight (lb)','Notes','Logged At']];
   const all = bodyEntries();
-  all.forEach(e => rows.push([e.date, e.weight, e.bf, e.muscle, e.waist, leanOf(e) ? r1(leanOf(e)) : '', fatOf(e) ? r1(fatOf(e)) : '', avg7(all, e.date) ? r1(avg7(all, e.date)) : '', e.notes]));
+  all.forEach(e => rows.push([e.date, e.weight, e.bf, e.muscle, e.waist, leanOf(e) ? r1(leanOf(e)) : '', fatOf(e) ? r1(fatOf(e)) : '', avg7(all, e.date) ? r1(avg7(all, e.date)) : '', e.notes, stamp(e.submittedAt)]));
   return rows;
 }
 function bodyCSV() { return rowsToCSV(bodyRows()); }
@@ -2156,6 +2169,7 @@ const _debouncedPickSearch = debounce(t => { const l = document.getElementById('
 const _debouncedFoodSearch = debounce(t => { const l = document.getElementById('pickList'); if (l) l.innerHTML = foodOptions(t.dataset.slot, t.value); }, 80);
 function touch() {
   const id = `${keyOf(selected)}_${tab}`;
+  if (drafts[id] && !drafts[id].startedAt) drafts[id].startedAt = nowIso();
   delete status[id];
   saveDraftsSoon();
   const el = document.getElementById('submitStatus');
@@ -2171,6 +2185,7 @@ main.addEventListener('input', e => {
   if (act === 'set') {
     const d = curDraft(), ex = d.exercises[+t.dataset.i], s = ex.sets[+t.dataset.j], was = setLogged(s);
     s[t.dataset.f] = num(t.value);
+    if (!was && setLogged(s)) s.t = nowIso(); else if (!setLogged(s)) delete s.t;
     restDue = !was && setLogged(s) ? `${t.dataset.i}:${t.dataset.j}` : restDue === `${t.dataset.i}:${t.dataset.j}` && setLogged(s) ? restDue : null;
     if (tab === 'lift') { refreshPR(+t.dataset.i, ex); t.closest('tr').classList.toggle('done', num(s.r) > 0); }
     else t.closest('tr').classList.toggle('done', num(s.v) > 0);
@@ -2333,7 +2348,7 @@ main.addEventListener('click', async e => {
     const soreness = +banner.querySelector('[data-cq="soreness"]').value;
     const energy = +banner.querySelector('[data-cq="energy"]').value;
     if (!sleep || !soreness || !energy) { alert('Please fill in all three fields.'); return; }
-    fatigueLog[k] = { sleep, soreness, energy, done:true };
+    fatigueLog[k] = { sleep, soreness, energy, done:true, at:nowIso() };
     lsSet(LS.fatigue, fatigueLog); sheetsPublishSoon();
     renderNow(); return;
   }
@@ -3033,7 +3048,7 @@ main.addEventListener('input', e => {
   else if (act === 'm-g') {
     const d = getMealDraft(k), it = d.items[+t.dataset.i]; if (!it) return;
     it.g = num(t.value);
-    if (it.g > 0 && !it.on) { it.on = true; const row = t.closest('.food-row'); row?.classList.remove('off'); const cb = row?.querySelector('.chk'); if (cb) cb.checked = true; }
+    if (it.g > 0 && !it.on) { it.on = true; it.at = nowIso(); const row = t.closest('.food-row'); row?.classList.remove('off'); const cb = row?.querySelector('.chk'); if (cb) cb.checked = true; }
     refreshMealNums(d); touch2('meals');
   }
   else if (act === 'm-search') { _debouncedFoodSearch(t); }
@@ -3042,7 +3057,7 @@ main.addEventListener('input', e => {
 main.addEventListener('change', e => {
   const t = e.target, act = t.dataset.act; if (!act) return;
   const k = keyOf(selected);
-  if (act === 'm-on') { const d = getMealDraft(k); d.items[+t.dataset.i].on = t.checked; t.closest('.food-row')?.classList.toggle('off', !t.checked); refreshMealNums(d); touch2('meals'); }
+  if (act === 'm-on') { const d = getMealDraft(k); const it = d.items[+t.dataset.i]; it.on = t.checked; if (t.checked) it.at = nowIso(); else delete it.at; t.closest('.food-row')?.classList.toggle('off', !t.checked); refreshMealNums(d); touch2('meals'); }
   else if (act === 'm-menu') { const d = getMealDraft(k); drafts[`${k}_meals`] = buildMealDraft(k, d.dayType, t.value, { ...d, userSet:true }); touch2('meals'); renderNow(); }
   else if (act === 'p-ex') { pr.ex = t.value; updateE1RMChart(); }
   else if (act === 'p-hiit') { pr.hiitKey = t.value; renderNow(); }
@@ -3061,7 +3076,7 @@ main.addEventListener('click', async e => {
     renderNow(); return;
   }
   if (act === 'm-daytype') { const d = getMealDraft(k); if (d.dayType !== b.dataset.v) { drafts[`${k}_meals`] = buildMealDraft(k, b.dataset.v, d.menu, { ...d, userSet:true }); touch2('meals'); renderNow(); } return; }
-  if (act === 'm-allon') { const d = getMealDraft(k); d.items.forEach(it => { if (it.slot === b.dataset.slot && it.planned != null) { it.on = true; if (num(it.g) === null) it.g = it.planned; } }); touch2('meals'); renderNow(); return; }
+  if (act === 'm-allon') { const d = getMealDraft(k); d.items.forEach(it => { if (it.slot === b.dataset.slot && it.planned != null) { if (!it.on) it.at = nowIso(); it.on = true; if (num(it.g) === null) it.g = it.planned; } }); touch2('meals'); renderNow(); return; }
   if (act === 'm-add') {
     const slot = b.dataset.slot, key = `meals:${slot}`;
     const wasOpen = openPicker === key;
@@ -3262,18 +3277,18 @@ document.addEventListener('change', async e => {
 });
 
 // ═══ Google Sheet publishing + proposed plans ═══════════════════════
-const MEAL_HEAD = ['Date','Day Type','Menu','Meal','Food','Planned (g)','Logged (g)','Eaten','Calories','Protein (g)','Fat (g)','Carbs (g)','Day Calories Eaten','Day Calorie Target','Notes'];
-const FATIGUE_HEAD = ['Date','Session','Sleep (1-5)','Soreness (1-5, 5 = very sore)','Energy (1-5)','Readiness (1-5)','Readiness Flag'];
+const MEAL_HEAD = ['Date','Day Type','Menu','Meal','Food','Planned (g)','Logged (g)','Eaten','Calories','Protein (g)','Fat (g)','Carbs (g)','Day Calories Eaten','Day Calorie Target','Notes','Eaten At','Day Logged At'];
+const FATIGUE_HEAD = ['Date','Session','Sleep (1-5)','Soreness (1-5, 5 = very sore)','Energy (1-5)','Readiness (1-5)','Readiness Flag','Checked In At'];
 function mealRows() {
   const rows = [MEAL_HEAD];
   Object.values(mealLog).sort((a, b) => a.date.localeCompare(b.date)).forEach(m => {
     const items = m.items || [], tot = m.totals || {}, tk = m.target?.kcal ?? plan?.targets?.[m.dayType]?.kcal ?? '';
     const day = [tot.kcal ?? '', tk];
-    if (!items.length) { rows.push([m.date, m.dayType, m.menu, '', '', '', '', '', '', '', '', '', ...day, m.notes || '']); return; }
+    if (!items.length) { rows.push([m.date, m.dayType, m.menu, '', '', '', '', '', '', '', '', '', ...day, m.notes || '', '', stamp(m.submittedAt)]); return; }
     items.forEach((it, j) => {
       const f = foods[it.food], x = f ? mac(it.food, it.g) : null;
       rows.push([m.date, m.dayType, m.menu, it.slot, f ? f.name : it.food, it.planned ?? '', it.g ?? '', it.on ? 'Yes' : 'No',
-        x ? Math.round(x.kcal) : '', x ? r1(x.p) : '', x ? r1(x.f) : '', x ? r1(x.c) : '', ...(j === 0 ? day : ['', '']), j === 0 ? (m.notes || '') : '']);
+        x ? Math.round(x.kcal) : '', x ? r1(x.p) : '', x ? r1(x.f) : '', x ? r1(x.c) : '', ...(j === 0 ? day : ['', '']), j === 0 ? (m.notes || '') : '', stamp(it.at), j === 0 ? stamp(m.submittedAt) : '']);
     });
   });
   return rows;
@@ -3282,7 +3297,7 @@ function fatigueRows() {
   const rows = [FATIGUE_HEAD];
   Object.keys(fatigueLog).sort().filter(k => fatigueLog[k] && fatigueLog[k].done).forEach(k => {
     const f = fatigueLog[k], r = readiness(k);
-    rows.push([k, sessionFor(k) || '', f.sleep, f.soreness, f.energy, r ? r1(r.score) : '', r ? (r.low ? 'Low' : r.high ? 'High' : 'Normal') : '']);
+    rows.push([k, sessionFor(k) || '', f.sleep, f.soreness, f.energy, r ? r1(r.score) : '', r ? (r.low ? 'Low' : r.high ? 'High' : 'Normal') : '', stamp(f.at)]);
   });
   return rows;
 }
@@ -3294,7 +3309,7 @@ function programRows() {
   const p = PROGRAM, rest = r => (typeof r === 'number' ? [r, r] : [r.low, r.high]);
   add({ Area:'Meta', Name:'start date (Day 1, PUSH A)', 'Cue / Target':keyOf(START) }); add({ Area:'Meta', Name:'rest days inserted (everything after shifts a day later)', 'Cue / Target':REST_DAYS.join(', ') }); add({ Area:'Meta', Name:'weeks', 'Cue / Target':`${PROGRAM_WEEKS} program weeks of 7 training days from Day 1 (the inserted rest days do not count); the last day is ${programEnd()}` });
   add({ Area:'Meta', Name:'week start dates', 'Cue / Target':Array.from({ length:PROGRAM_WEEKS }, (_, w) => `${w + 1}: ${dateOfDay(w * 7)}`).join(', ') });
-  add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
+  add({ Area:'Meta', Name:'published at', 'Cue / Target':stamp(nowIso()) }); add({ Area:'Meta', Name:'version', 'Cue / Target':p.version }); add({ Area:'Meta', Name:'source', 'Cue / Target':p.source });
   add({ Area:'Meta', Name:'deloadWeeks (pull-forward)', 'Cue / Target':(p.deloadWeeks || []).join(', ') });
   add({ Area:'Meta', Name:'scheduled deload weeks', 'Cue / Target':[...deloadWeeks()].sort((a, b) => a - b).join(', ') });
   SESSIONS.forEach(s => p.sessions[s].exercises.forEach((e, i) => { const [rl, rh] = rest(e.restSec);
