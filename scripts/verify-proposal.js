@@ -92,6 +92,7 @@ check('Sets ±1, rep range ±2 and rest ±30 sec stay automatic; anything bigger
 check('HIIT rounds of exactly 16 and Zone 2 of exactly 60 minutes are allowed', () => {
   const r = review(mut(f => { f.cardio[0].rounds = 16; f.cardio[1].durationMin = 60; })); assert.ok(r.ok, r.errors.join());
 });
+rejects('the elliptical as a cardio machine', f => { f.cardio[0].machine = 'Elliptical'; }, /elliptical is not used/);
 rejects('Zone 2 longer than 60 minutes', f => { f.cardio[1].durationMin = 61; }, /61 minutes is over the limit of 60/);
 rejects('a Zone 2 heart rate outside 136–148', f => { f.cardio[1].hrHigh = 155; }, /136–148/);
 rejects('HIIT on a legs day', f => { Object.assign(f.cardio[0], { session: 'LEGS B' }); }, /only push and pull sessions can switch|push and pull days only/);

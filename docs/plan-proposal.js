@@ -146,7 +146,7 @@
           else entry.date = x.date;
           const has = program.cardio.sessions[x.session];
           if (has.type !== kind && !/^(PUSH|PULL)/.test(x.session)) err(`${p}.type`, `${x.session} is a ${has.type} session and only push and pull sessions can switch between HIIT and Zone 2`);
-          if (x.machine !== undefined) { if (typeof x.machine === 'string' && MACHINE_RE.test(x.machine.trim())) entry.machine = x.machine.trim(); else err(`${p}.machine`, 'must be a machine name up to 40 characters, such as "Rower" (letters, numbers, spaces and . / & ( ) - only)'); }
+          if (x.machine !== undefined) { if (typeof x.machine === 'string' && /ellipt/i.test(x.machine)) err(`${p}.machine`, 'the elliptical is not used in this program'); else if (typeof x.machine === 'string' && MACHINE_RE.test(x.machine.trim())) entry.machine = x.machine.trim(); else err(`${p}.machine`, 'must be a machine name up to 40 characters, such as "Rower" (letters, numbers, spaces and . / & ( ) - only)'); }
           if (x.type === 'hiit') {
             if (!/^(PUSH|PULL)/.test(x.session) && has.type === kind) err(`${p}.session`, 'HIIT is for push and pull days only');
             if (!isInt(x.rounds) || x.rounds < 1) err(`${p}.rounds`, 'required whole number, 1 or more');

@@ -943,9 +943,32 @@ function coreRows(session, k) {
   const base = CORE[session]; if (!base) return undefined;
   return programInfo(k).deload ? base.map(([n, s, t]) => [n, String(deloadSets(+s)), t]) : base;
 }
+// Cardio variety: the recommended machine rotates every 3 weeks through modalities that keep the session's intent (HIIT: hard
+// intervals around 80% effort; Zone 2: steady work at 136–148 bpm), starting from the program's own machine. The dropdown always
+// offers the rest. Elliptical is never offered. Watts are only compared on the same machine, so each new HIIT machine starts a baseline.
+const EXCLUDED_CARDIO = /ellipt/i, CARDIO_BLOCK_WEEKS = 3;
+const CARDIO_MODES = {
+  'HIIT': [
+    ['Rower', 'Damper 5–6, drive with the legs: a hard, repeatable 500 m pace.'],
+    ['Air Bike', 'Arms and legs together; push each interval to about 80% effort.'],
+    ['SkiErg', 'Hinge at the hips and pull with the lats; damper 6–8, hard but repeatable.'],
+    ['Stationary Bike', 'Set the resistance high enough that you cannot spin out; stand for the last 10 sec if you like.'],
+    ['Treadmill', 'Hill sprints: 6–8% incline at a hard run you can hold for the whole interval.'],
+    ['Stair Master', 'Fast steps with a light hand on the rail; pick the level that holds you near 80% effort.'],
+  ],
+  'Zone 2': [
+    ['Stationary Bike', 'Easy spin; add resistance until you reach the zone, still able to talk in full sentences.'],
+    ['Treadmill', 'Incline walk, about 3.5–4 mph at 8–10%.'],
+    ['Rower', 'Damper 3–4, 18–22 strokes a minute, steady and easy.'],
+    ['Stair Master', 'Slow, steady steps at a level that holds the zone; do not lean on the rails.'],
+    ['Air Bike', 'Easy pace, mostly legs, steady output.'],
+    ['SkiErg', 'Light, rhythmic pulls at a low stroke rate.'],
+    ['Outdoor Walk', 'Brisk walk, hills if you have them (or an easy jog) to hold the zone.'],
+  ],
+};
 function cardioPlan(session, k) {
   const b = CARDIO[session]; if (!b) return undefined;
-  const { phase, deload } = programInfo(k), ph = phase.n, c = { ...b };
+  const info = programInfo(k), { phase, deload } = info, ph = phase.n, c = { ...b };
   if (c.type === 'HIIT') {
     c.maxRounds = (ph === 2 || ph === 3) && session === 'PUSH A' ? b.rounds + 2 : b.rounds;
     c.baseRounds = b.rounds;
@@ -958,6 +981,13 @@ function cardioPlan(session, k) {
     if (ph === 4) c.duration = 30;
     if (deload) c.duration = Math.round(c.duration * DELOAD_KEEP);
   }
+  const modes = CARDIO_MODES[b.type] || [];
+  const pool = [...new Set([b.recommended, ...modes.map(m => m[0]), ...(b.alts || [])])].filter(m => !EXCLUDED_CARDIO.test(m));
+  const pick = pool[Math.floor((Math.max(1, info.week) - 1) / CARDIO_BLOCK_WEEKS) % pool.length] || b.recommended;
+  c.baseMachine = b.recommended; c.recommended = pick; c.alts = pool.filter(m => m !== pick);
+  const cue = (modes.find(m => m[0] === pick) || [])[1];
+  if (cue) c.note = `${pick}: ${cue} ${c.note}`;
+  if (c.type === 'HIIT' && pick !== c.baseMachine) c.note += ' New machine: your first week on it sets a fresh watts baseline (watts are only compared on the same machine).';
   if (deload) c.note = `Deload: shorter than usual. ${c.note}`;
   return c;
 }
@@ -1529,9 +1559,22 @@ function sessionSummaryHTML(w, type, k) {
 let _actx = null;
 function unlockAudio() { try { _actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (_actx.state === 'suspended') _actx.resume(); } catch {} }
 document.addEventListener('pointerdown', unlockAudio, { passive:true });
+// Rest-over alarm: six loud pulses at full volume (two stacked square waves a fifth apart, through a limiter so they do not distort),
+// repeated again after a short pause. The device volume and, on iPhone, the ringer switch still apply.
 function beep() {
   if (!_actx) return;
-  try { [0, .22, .44].forEach((d, i) => { const o = _actx.createOscillator(), g = _actx.createGain(); o.type = 'square'; o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(.0001, _actx.currentTime + d); g.gain.exponentialRampToValueAtTime(.12, _actx.currentTime + d + .01); g.gain.exponentialRampToValueAtTime(.0001, _actx.currentTime + d + .16); o.connect(g).connect(_actx.destination); o.start(_actx.currentTime + d); o.stop(_actx.currentTime + d + .18); }); } catch {}
+  try {
+    const out = _actx.createDynamicsCompressor(); out.threshold.value = -6; out.ratio.value = 12; out.connect(_actx.destination);
+    const t0 = _actx.currentTime + .02;
+    for (let r = 0; r < 2; r++) for (let n = 0; n < 6; n++) {
+      const at = t0 + r * 2.2 + n * .26, f = n % 2 ? 1320 : 990;
+      [f, f * 1.5].forEach((hz, k) => {
+        const o = _actx.createOscillator(), g = _actx.createGain(); o.type = 'square'; o.frequency.value = hz;
+        g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(k ? .45 : .9, at + .01); g.gain.setValueAtTime(k ? .45 : .9, at + .17); g.gain.exponentialRampToValueAtTime(.0001, at + .22);
+        o.connect(g).connect(out); o.start(at); o.stop(at + .24);
+      });
+    }
+  } catch {}
 }
 const restBar = document.getElementById('restBar');
 function startRest(secs, label, next) {
@@ -1552,8 +1595,8 @@ function tickRest() {
     REST.done = true; clearInterval(REST.iv);
     restBar.classList.add('done');
     const l = document.getElementById('rbLbl'); if (l) l.textContent = 'Rest over · next set';
-    beep(); try { navigator.vibrate?.([180, 90, 180]); } catch {}
-    REST.to = setTimeout(stopRest, 10000);
+    beep(); try { navigator.vibrate?.([300, 120, 300, 120, 300]); } catch {}
+    REST.to = setTimeout(stopRest, 15000);
   }
 }
 function stopRest() { clearInterval(REST.iv); clearTimeout(REST.to); restBar.hidden = true; document.body.classList.remove('resting'); }
@@ -1904,22 +1947,23 @@ function coreRow(ex, i, session, k) {
     const t = rec.targets[j];
     return `<tr class="${num(s.v) > 0 ? 'done' : ''}">
       <td class="n">${j+1}</td>
-      <td><input id="cv-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="v" type="number" inputmode="numeric" min="0" placeholder="${t ? t.v : ''}" value="${s.v ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} ${unitLabel}"></td>
-      <td><input id="cw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${t && t.w ? t.w : 'opt.'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} added weight"></td></tr>`;
+      <td><input id="cw-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${t && t.w ? t.w : 'lb'}" value="${s.w ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} weight"></td>
+      <td><input id="cv-${i}-${j}" data-act="set" data-i="${i}" data-j="${j}" data-f="v" type="number" inputmode="numeric" min="0" placeholder="${t ? t.v : unitLabel.toLowerCase()}" value="${s.v ?? ''}" ${ex.skipped ? 'disabled' : ''} aria-label="Set ${j+1} ${unitLabel}"></td></tr>`;
   }).join('');
   return `<div class="ex${ex.skipped ? ' skipped' : ''}">
     <div class="plan">
       <div class="ex-num">${String(i+1).padStart(2,'0')}</div>
       ${pickerHTML('core', i, ex)}
       <div class="meta"><span>${p[1]} × ${esc(p[2])}</span><button class="rest-btn" data-act="rest" data-i="${i}" title="Start rest timer">⏱ Rest 45 sec</button></div>
-      <div class="rec"><div class="rec-head"><div class="rec-title">Target today</div>${rec.status ? `<span class="dp ${rec.status.cls}">${esc(rec.status.text)}</span>` : ''}</div><div class="targets">${targets}</div><div class="why">${esc(rec.why)}</div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}</div>
+      <div class="rec"><div class="rec-head"><div class="rec-title">Target today</div>${rec.status ? `<span class="dp ${rec.status.cls}">${esc(rec.status.text)}</span>` : ''}</div><div class="targets">${targets}</div><div class="ovl ${rec.last && /^Hit/.test(rec.why) ? 'up' : 'build'}"><b>${rec.last ? (/^Hit/.test(rec.why) ? 'Level up' : 'Build') : 'Baseline'}</b><span>${esc(rec.why)}</span></div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}</div>
     </div>
     <div class="actual">
       <div class="act-top">
         <label class="switch"><input type="checkbox" data-act="skip" data-i="${i}" ${ex.skipped ? 'checked' : ''}><span>Skipped</span></label>
         <button class="mini fill" data-act="fill" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>Fill targets</button>
+        <button class="mini" data-act="fill-last" data-i="${i}" ${ex.skipped || !rec.last ? 'disabled' : ''}>Last session</button>
       </div>
-      <table class="sets"><thead><tr><th>Set</th><th>${unitLabel}${rec.spec.side ? '/side' : ''}</th><th>Added lb</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="sets"><thead><tr><th>Set</th><th>Weight (lb)</th><th>${unitLabel}${rec.spec.side ? '/side' : ''}</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="set-btns"><button class="mini" data-act="add" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>+ Set</button>${ex.sets.length > 1 ? `<button class="mini" data-act="rm" data-i="${i}" ${ex.skipped ? 'disabled' : ''}>− Set</button>` : ''}</div>
     </div>
   </div>`;
@@ -1940,7 +1984,7 @@ function cardioRow(ex, session, k) {
       <div class="plan-stats">
         <div><div class="field-label">Duration</div><div class="v">${rec.duration} min</div></div>
         <div><div class="field-label">Heart rate</div><div class="v">${rec.hr}</div></div>
-        ${hiit ? `<div><div class="field-label">Rounds</div><div class="v">${rec.rounds}</div></div><div><div class="field-label">Protocol</div><div class="s">${esc(c.protocol)}</div></div>${c.targetAvgWatts ? `<div><div class="field-label">Target avg watts</div><div class="v">${c.targetAvgWatts} W</div></div>` : ''}` : ''}
+        ${hiit ? `<div><div class="field-label">Rounds</div><div class="v">${rec.rounds}</div></div><div><div class="field-label">Protocol</div><div class="s">${esc(c.protocol)}</div></div>${c.targetAvgWatts && c.recommended === c.baseMachine ? `<div><div class="field-label">Target avg watts</div><div class="v">${c.targetAvgWatts} W</div></div>` : ''}` : ''}
         <div style="grid-column:1/-1"><div class="field-label">Note</div><div class="s">${esc(c.note)}</div></div>
       </div>
       <div class="rec"><div class="rec-title">Target today</div><div class="why" style="margin-top:0">${esc(rec.why)}</div>${lastStr ? `<div class="last">${esc(lastStr)}</div>` : ''}</div>
@@ -2118,11 +2162,16 @@ function touch() {
   if (el) { const dirty = isDirty(id); const w = workouts[id]; el.className = 'status ' + (dirty ? 'dirty' : w ? 'ok' : ''); el.lastElementChild.textContent = dirty ? (w ? 'Changes not submitted' : 'Not submitted yet') : (w ? 'Submitted' : 'Not submitted yet'); }
 }
 
+// A set counts as logged once its weight (0 = bodyweight) and its reps, seconds or yards are both filled in. The auto rest timer
+// starts when typing completes a set, not before and not when an already complete set is edited.
+const setLogged = s => num(s.w) !== null && (num(s.r) > 0 || num(s.v) > 0);
+let restDue = null; // "i:j" of the set whose last field was just entered
 main.addEventListener('input', e => {
   const t = e.target, act = t.dataset.act;
   if (act === 'set') {
-    const d = curDraft(), ex = d.exercises[+t.dataset.i], s = ex.sets[+t.dataset.j];
+    const d = curDraft(), ex = d.exercises[+t.dataset.i], s = ex.sets[+t.dataset.j], was = setLogged(s);
     s[t.dataset.f] = num(t.value);
+    restDue = !was && setLogged(s) ? `${t.dataset.i}:${t.dataset.j}` : restDue === `${t.dataset.i}:${t.dataset.j}` && setLogged(s) ? restDue : null;
     if (tab === 'lift') { refreshPR(+t.dataset.i, ex); t.closest('tr').classList.toggle('done', num(s.r) > 0); }
     else t.closest('tr').classList.toggle('done', num(s.v) > 0);
     startSessionClock();
@@ -2153,7 +2202,7 @@ function refreshPR(i, ex) {
 }
 main.addEventListener('change', e => {
   const t = e.target, act = t.dataset.act;
-  if (act === 'set' && REST.auto && ((tab === 'lift' && t.dataset.f === 'r') || (tab === 'core' && t.dataset.f === 'v')) && num(t.value) > 0) { startRestFor(+t.dataset.i, +t.dataset.j); return; }
+  if (act === 'set' && REST.auto && restDue === `${t.dataset.i}:${t.dataset.j}`) { restDue = null; startRestFor(+t.dataset.i, +t.dataset.j); return; }
   if (act === 'rest-auto') { REST.auto = t.checked; lsSet('derek-tc-rest-auto', REST.auto); if (!t.checked) stopRest(); return; }
   if (act === 'skip') {
     const ex = curDraft().exercises[+t.dataset.i];
@@ -2256,6 +2305,7 @@ main.addEventListener('click', async e => {
   }
   if (act === 'fill-last') {
     const k = keyOf(selected), ex = curDraft().exercises[i];
+    if (tab === 'core') { const last = lastCore(ex.name, k); if (last) { ex.sets = last.sets.map(s => ({ v:s.v, w:s.w })); touch(); renderNow(); } return; }
     const last = liftHistory(ex.name, k, 1, machineCtx(ex.name, ex.machine))[0];
     if (last) { ex.sets = last.sets.map(s => ({ w:s.w, r:s.r })); touch(); renderNow(); }
     return;
