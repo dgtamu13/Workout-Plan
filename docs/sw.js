@@ -1,5 +1,5 @@
 // Bump CACHE when shipping changes so clients drop old assets.
-const CACHE = 'training-calendar-v34';
+const CACHE = 'training-calendar-v35';
 const ASSETS = [
   './',
   'index.html',
