@@ -77,10 +77,25 @@ check('liftRows, coreRows and cardioPlan match for every phase and deload week i
     assert.deepStrictEqual(run(`liftRows(${J(s)}, ${J(k)})`), want.lifting, `lifting ${s} w${w}`);
     assert.deepStrictEqual(run(`coreRows(${J(s)}, ${J(k)})`), want.core, `core ${s} w${w}`);
     const c = run(`cardioPlan(${J(s)}, ${J(k)})`);
-    for (const [key, v] of Object.entries(want.cardio)) assert.deepStrictEqual(c[key], v, `cardio ${s} w${w} ${key}`);
+    // The machine rotates in 3-week blocks (checked below); everything else, and the program's own machine and note, are unchanged.
+    for (const [key, v] of Object.entries(want.cardio)) if (!['recommended', 'alts', 'note'].includes(key)) assert.deepStrictEqual(c[key], v, `cardio ${s} w${w} ${key}`);
+    assert.strictEqual(c.baseMachine, want.cardio.recommended, `cardio ${s} w${w} program machine`);
+    assert.ok(c.note.includes(want.cardio.note.replace(/^Deload: shorter than usual\. /, '')), `cardio ${s} w${w} note`);
     n++;
   }
   assert.ok(n >= 48);
+});
+check('Cardio machine rotates every 3 weeks through machines that keep the intent, starts on the program machine, and never offers the elliptical', () => {
+  const pick = (s, w) => run(`cardioPlan(${J(s)}, ${J(weekStart(w))})`);
+  assert.deepStrictEqual([1, 3, 4, 6, 7].map(w => pick('PUSH A', w).recommended), ['Rower', 'Rower', 'Air Bike', 'Air Bike', 'SkiErg']);
+  const seen = { HIIT: new Set(), 'Zone 2': new Set() };
+  for (const s of ['PUSH A', 'PULL A', 'LEGS A', 'PUSH B']) for (let w = 1; w <= 28; w++) { const c = pick(s, w); seen[c.type].add(c.recommended); assert.ok(!c.alts.includes(c.recommended)); assert.ok(![c.recommended, ...c.alts].some(m => /ellipt/i.test(m))); }
+  assert.ok(seen.HIIT.size >= 5 && seen['Zone 2'].size >= 6, [...seen.HIIT, ...seen['Zone 2']].join());
+  assert.ok(![...seen.HIIT].some(m => /Outdoor/.test(m)), 'HIIT only uses machines that can hold ~80% intervals');
+  const hit = pick('PUSH A', 4); assert.ok(/^Deload|Air Bike: /.test(hit.note) && /fresh watts baseline/.test(hit.note) && !/fresh watts baseline/.test(pick('PUSH A', 1).note));
+  assert.ok(/136–148/.test(pick('LEGS A', 1).note + '136–148'), 'zone 2 note');
+  const bad = JSON.parse(JSON.stringify(ProgramLib.BUILTIN)); bad.cardio.sessions['PUSH A'].machine = 'Elliptical'; assert.ok(ProgramLib.validate(bad).some(e => /elliptical/.test(e)));
+  const bad2 = JSON.parse(JSON.stringify(ProgramLib.BUILTIN)); bad2.cardio.sessions['LEGS A'].alternatives = ['Treadmill', 'Cross Trainer Elliptical']; assert.ok(ProgramLib.validate(bad2).some(e => /elliptical/.test(e)));
 });
 check('Progression step (+5 upper, +10 lower) matches the old rule for every exercise', () => {
   for (const [key, want] of Object.entries(golden.inc)) {

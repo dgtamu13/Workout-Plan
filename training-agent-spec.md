@@ -79,6 +79,11 @@ Look at every logged session of each exercise since Day 1, in reference pounds (
 | Zone 2 session length | 60 min | Yes |
 | Zone 2 heart rate zone | 136-148 BPM | Yes: `hrLow`/`hrHigh` must sit inside it |
 
+### Variety
+- The app rotates the recommended machine every 3 weeks, starting from the program's own `machine` for the session, through modalities that keep the session's intent: HIIT (hard intervals around 80% effort, watts tracked) on Rower, Air Bike, SkiErg, Stationary Bike, Treadmill hill sprints and Stair Master; Zone 2 (136-148 bpm, steady) on Stationary Bike, incline Treadmill walk, Rower, Stair Master, Air Bike, SkiErg or an outdoor walk. The user can still pick any of them in the dropdown.
+- The agent does not change `machine` for variety, and keeps HIIT rounds, intervals and ceilings the same on every machine. Watts are only compared on the same machine, so the first weeks on a new HIIT machine set a fresh baseline: do not read a drop in watts after a rotation as a decline.
+- **The elliptical is never used** (the user dislikes it): the app and the plan checker reject it.
+
 ### HIIT tracking (fields on the cardio exercise record)
 Existing: `machine`, `rounds`, `duration`, `hr`, `maxhr`.
 Added: `workSec`, `restSec`, `avgWatts` (primary output metric), `hrRec60` (optional).

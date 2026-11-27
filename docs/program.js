@@ -97,6 +97,7 @@
   const range = (v, lo, hi) => isObj(v) && isInt(v.low, lo, hi) && isInt(v.high, lo, hi) && v.low <= v.high;
   const str = v => typeof v === 'string' && v.trim().length > 0;
   const MACHINE_RE = /^[A-Za-z0-9][A-Za-z0-9 ./&()-]{0,39}$/;
+  const NO_MACHINE_RE = /ellipt/i; // the user does not want the elliptical anywhere in the program
 
   // Returns a list of problems (empty when the document is usable).
   function validate(doc) {
@@ -152,7 +153,9 @@
       const c = cs[s], p = `cardio.sessions["${s}"]`;
       if (!isObj(c)) { bad(p, 'required'); continue; }
       if (!(str(c.machine) && MACHINE_RE.test(c.machine))) bad(p + '.machine', 'required machine name (letters, numbers, spaces and . / & ( ) - only, up to 40 characters)');
+      else if (NO_MACHINE_RE.test(c.machine)) bad(p + '.machine', 'the elliptical is not used in this program');
       if (c.alternatives !== undefined && !(Array.isArray(c.alternatives) && c.alternatives.every(m => str(m) && MACHINE_RE.test(m)))) bad(p + '.alternatives', 'list of machine names');
+      else if ((c.alternatives || []).some(m => NO_MACHINE_RE.test(m))) bad(p + '.alternatives', 'the elliptical is not used in this program');
       if (c.type === 'HIIT') {
         if (!isInt(c.rounds, 1, 40)) bad(p + '.rounds', 'whole number 1–40');
         if (!isInt(c.workSec, 5, 600)) bad(p + '.workSec', 'seconds, 5–600');
